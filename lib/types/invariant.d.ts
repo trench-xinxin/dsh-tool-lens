@@ -1,6 +1,6 @@
 /**
- * Package-owned invariant companion for `@trench/dsh-tool-lens`.
- * @module @trench/dsh-tool-lens/invariant
+ * Package-owned invariant companion for `@trench-xinxin/dsh-tool-lens`.
+ * @module @trench-xinxin/dsh-tool-lens/invariant
  */
 import type { Context } from '@deepseek-ai/cordis';
 /** Cordis companion plugin name. */
