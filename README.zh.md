@@ -1,5 +1,9 @@
 # DeepSeek Lens (`@trench-xinxin/dsh-tool-lens`)
 
+<p align="left">
+  <a href="./README.md">English</a> | <b>简体中文</b>
+</p>
+
 [![npm version](https://img.shields.io/npm/v/@trench-xinxin/dsh-tool-lens.svg)](https://www.npmjs.com/package/@trench-xinxin/dsh-tool-lens)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek-Harness%20Plugin-0066FF.svg)](https://github.com/deepseek-ai/deepseek-harness)
