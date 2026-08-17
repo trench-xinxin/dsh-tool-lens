@@ -1,6 +1,6 @@
-# DeepSeek Lens (`@trench/dsh-tool-lens`)
+# DeepSeek Lens (`@trench-xin/dsh-tool-lens`)
 
-[![npm version](https://img.shields.io/npm/v/@trench/dsh-tool-lens.svg)](https://www.npmjs.com/package/@trench/dsh-tool-lens)
+[![npm version](https://img.shields.io/npm/v/@trench-xin/dsh-tool-lens.svg)](https://www.npmjs.com/package/@trench-xin/dsh-tool-lens)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek-Harness%20Plugin-0066FF.svg)](https://github.com/deepseek-ai/deepseek-harness)
 
@@ -42,9 +42,9 @@
 在 DeepSeek Harness 工作区或 Profile 中安装：
 
 ```bash
-pnpm add @trench/dsh-tool-lens
+pnpm add @trench-xin/dsh-tool-lens
 # 或使用 npm / yarn
-npm install @trench/dsh-tool-lens
+npm install @trench-xin/dsh-tool-lens
 ```
 
 ### 2. 配置文件 (`cordis.yml`)
@@ -54,7 +54,7 @@ npm install @trench/dsh-tool-lens
 ```yaml
 - insert:
     - id: tool-lens
-      name: '@trench/dsh-tool-lens'
+      name: '@trench-xin/dsh-tool-lens'
       config:
         maxDepth: 3
 ```

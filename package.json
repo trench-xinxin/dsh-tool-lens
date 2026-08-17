@@ -1,5 +1,5 @@
 {
-  "name": "@trench/dsh-tool-lens",
+  "name": "@trench-xin/dsh-tool-lens",
   "description": "DeepSeek Lens: Deep AST code graph, symbol call hierarchies, and refactoring impact analysis tool plugin for DeepSeek Harness",
   "version": "0.1.0",
   "private": false,
