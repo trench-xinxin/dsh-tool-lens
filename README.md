@@ -10,6 +10,22 @@ It provides autonomous AI agents with structural codebase vision — enabling in
 
 ---
 
+## ⚡ Zero-Config Instant Launch
+
+You can launch DeepSeek Harness with Lens pre-loaded **with zero configuration** directly via `npx`:
+
+```bash
+# 🚀 Instant zero-config launch (Web UI)
+npx @trench-xinxin/dsh-tool-lens
+
+# Or run one-shot tasks
+npx @trench-xinxin/dsh-tool-lens "Use the lens tool to inspect the dependencies of src/index.ts"
+```
+
+No YAML files, no manual configuration required!
+
+---
+
 ## 🌟 Key Capabilities
 
 1. **📦 File & Module Dependencies (`dependencies`)**
@@ -35,11 +51,11 @@ It provides autonomous AI agents with structural codebase vision — enabling in
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Advanced Setup (Manual / Cordis YAML)
+
+If you are embedding Lens into custom Cordis profiles:
 
 ### 1. Installation
-
-Install within your DeepSeek Harness workspace:
 
 ```bash
 pnpm add @trench-xinxin/dsh-tool-lens
@@ -57,16 +73,6 @@ Mount the plugin in your Cordis profile or as a runtime overlay patch:
       name: '@trench-xinxin/dsh-tool-lens'
       config:
         maxDepth: 3
-```
-
-### 3. Running with DeepSeek Harness
-
-```bash
-# Start Web UI with Lens plugin
-pnpm dsh web --patch ./path/to/cordis.yml
-
-# Or run headless tasks
-pnpm dsh --profile headless --patch ./path/to/cordis.yml "Use the lens tool to inspect the dependencies of src/index.ts"
 ```
 
 ---
@@ -123,6 +129,8 @@ The model interacts with Lens via the `lens` tool schema:
 
 ```
 packages/lens/tool-lens/
+├── bin/
+│   └── dsh-lens.js   # Zero-config CLI executable
 ├── src/
 │   ├── index.ts      # Cordis plugin entrypoint & defineTool registration
 │   ├── analyzer.ts   # TypeScript AST parser & multi-pass symbol/call extractor

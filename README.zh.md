@@ -10,6 +10,20 @@
 
 ---
 
+## ⚡ 零配置一键即用（免改任何文件）
+
+无需编写任何 YAML 配置文件，直接通过 `npx` 一行命令即可启动预载 Lens 图谱能力的 DeepSeek Harness：
+
+```bash
+# 🚀 零配置一键启动 Web 界面
+npx @trench-xinxin/dsh-tool-lens
+
+# 或直接运行一次性任务
+npx @trench-xinxin/dsh-tool-lens "使用 lens 工具分析 src/index.ts 的模块依赖"
+```
+
+---
+
 ## 🌟 核心特性
 
 1. **📦 模块与文件依赖分析 (`dependencies`)**
@@ -35,11 +49,11 @@
 
 ---
 
-## 🚀 快速上手
+## 🚀 高级接入方式（手动配置 Cordis YAML）
+
+如果你需要在自己的 Cordis Profile 或工程配置文件中引用：
 
 ### 1. 安装
-
-在 DeepSeek Harness 工作区或 Profile 中安装：
 
 ```bash
 pnpm add @trench-xinxin/dsh-tool-lens
@@ -49,24 +63,12 @@ npm install @trench-xinxin/dsh-tool-lens
 
 ### 2. 配置文件 (`cordis.yml`)
 
-在 Cordis 配置文件或运行时 Overlay Patch 中挂载该插件：
-
 ```yaml
 - insert:
     - id: tool-lens
       name: '@trench-xinxin/dsh-tool-lens'
       config:
         maxDepth: 3
-```
-
-### 3. 启动并体验
-
-```bash
-# 启动 Web 界面并加载 Lens 插件
-pnpm dsh web --patch ./path/to/cordis.yml
-
-# 或在命令行模式中直接执行任务
-pnpm dsh --profile headless --patch ./path/to/cordis.yml "使用 lens 工具分析 src/index.ts 的模块依赖"
 ```
 
 ---
@@ -123,6 +125,8 @@ pnpm dsh --profile headless --patch ./path/to/cordis.yml "使用 lens 工具分�
 
 ```
 packages/lens/tool-lens/
+├── bin/
+│   └── dsh-lens.js   # 零配置命令行启动器
 ├── src/
 │   ├── index.ts      # Cordis 插件入口与 defineTool 注册
 │   ├── analyzer.ts   # TypeScript AST 解析与跨文件多阶段符号/调用提取
