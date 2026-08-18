@@ -1,9 +1,9 @@
 /**
  * Model-facing `lens` tool for symbol call hierarchies, file dependencies,
- * and refactoring impact graphs using deterministic AST analysis.
+ * circular dependency audit, architecture metrics, and refactoring impact analysis.
  *
  * Namespace plugin (named exports, no default export).
- * @module @deepseek-ai/dsh-tool-lens
+ * @module @trench-xinxin/dsh-tool-lens
  */
 
 import { resolve } from 'node:path'
@@ -12,13 +12,23 @@ import Schema from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { CodeAnalyzer } from './analyzer.ts'
+import { buildCircularResult } from './analytics/circular.ts'
+import { analyzeImpact } from './analytics/impact.ts'
+import { buildMetricsResult } from './analytics/metrics.ts'
 import { formatGraphMarkdown, presentLensCall, presentLensResult } from './render.ts'
 import type { CodeGraphResult, LensArgs } from './types.ts'
 
-export * from './types.ts'
-export * from './graph.ts'
-export * from './analyzer.ts'
+export * from './core/types.ts'
+export * from './core/graph.ts'
+export * from './core/cache.ts'
+export * from './parsers/config-parser.ts'
+export * from './parsers/ts-parser.ts'
+export * from './parsers/watcher.ts'
+export * from './analytics/circular.ts'
+export * from './analytics/metrics.ts'
+export * from './analytics/impact.ts'
 export * from './render.ts'
+export * from './analyzer.ts'
 
 /** Cordis plugin name for diagnostics and composition. */
 export const name = 'tool-lens'
@@ -28,16 +38,22 @@ export const inject = ['tools', 'systemPrompt']
 
 /** System prompt guidance describing the purpose and usage of the tool. */
 export const LENS_PROMPT_TEXT =
-  'Use the lens tool when you need to understand symbol relationships across files, such as tracking callers/callees of a function, exploring module dependencies, or evaluating the blast radius of a refactoring change.'
+  'Use the lens tool when you need to understand symbol relationships across files, tracking callers/callees, exploring module dependencies, auditing circular dependencies, evaluating architecture coupling metrics, or measuring the blast radius of refactoring.'
 
 /** Plugin configuration schema. */
 export interface Config {
   /** Maximum default graph traversal depth (default: 3). */
   maxDepth?: number
+  /** Enable incremental caching for sub-20ms warm queries (default: true). */
+  cache?: boolean
+  /** Automatically watch workspace files for live graph updates (default: false). */
+  watch?: boolean
 }
 
 export const Config: Schema<Config> = Schema.object({
   maxDepth: Schema.number().default(3).description('Default maximum graph search depth'),
+  cache: Schema.boolean().default(true).description('Enable incremental mtime caching'),
+  watch: Schema.boolean().default(false).description('Watch workspace source files for live graph updates'),
 })
 
 type ResolvedConfig = Required<Config>
@@ -95,6 +111,22 @@ const LENS_OUTPUT_SCHEMA = {
       },
     },
     summary: { type: 'string', required: true },
+    circularCycles: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          cycle: { type: 'array', items: { type: 'string' } },
+          length: { type: 'integer' },
+        },
+      },
+    },
+    metrics: {
+      type: 'object',
+    },
+    impactTiers: {
+      type: 'object',
+    },
   },
 } as const
 
@@ -106,32 +138,41 @@ const LENS_OUTPUT_SCHEMA = {
 export function apply(ctx: Context, config: Config = {}): void {
   const resolved = config as ResolvedConfig
   const defaultDepth = resolved.maxDepth ?? 3
+  const useCache = resolved.cache ?? true
+  const enableWatch = resolved.watch ?? false
 
-  // 1. Inject guidance into the system prompt
+  // 1. Session-level singleton analyzer for high-speed cache reuse across queries
+  const analyzer = new CodeAnalyzer()
+
+  if (enableWatch) {
+    const workspaceRoot = process.cwd()
+    analyzer.createWatcher(workspaceRoot)
+  }
+
+  // 2. Inject guidance into the system prompt
   ctx.systemPrompt?.section({
     name: 'tool:lens',
     order: 120,
     text: LENS_PROMPT_TEXT,
   })
 
-  // 2. Register the model-facing tool
+  // 3. Register the model-facing tool
   ctx.tools.register(
-    defineTool({
+    defineTool<LensArgs, CodeGraphResult>({
       name: 'lens',
       description:
-        'Inspect symbol call hierarchies, file dependencies, and refactoring impact graphs using AST static analysis.',
+        'Inspect symbol call hierarchies, file dependencies, circular dependencies, architecture metrics, and refactoring impact graphs using AST static analysis.',
       parameters: {
         action: {
           type: 'string',
           required: true,
-          enum: ['dependencies', 'call_graph', 'impact'],
+          enum: ['dependencies', 'call_graph', 'impact', 'circular', 'metrics'],
           description:
-            'The type of graph query: dependencies (file/module imports), call_graph (function callers/callees), or impact (blast radius analysis).',
+            'The type of graph query: dependencies (file imports), call_graph (function call hierarchy), impact (blast radius tiers), circular (cycle detection), or metrics (coupling health).',
         },
         target: {
           type: 'string',
-          required: true,
-          description: 'Target symbol name, function name, or relative file path to analyze.',
+          description: 'Target symbol name, function name, or relative file path to analyze (optional for circular and metrics).',
         },
         depth: {
           type: 'number',
@@ -150,70 +191,103 @@ export function apply(ctx: Context, config: Config = {}): void {
       },
       output: {
         schema: LENS_OUTPUT_SCHEMA,
-        render: (_args, result) => [{ type: 'text', text: formatGraphMarkdown(result as CodeGraphResult) }],
+        render: (_args: LensArgs, result: CodeGraphResult) => [
+          { type: 'text', text: formatGraphMarkdown(result) },
+        ],
       },
-      presentCall: (args) => presentLensCall(args as LensArgs),
-      presentResult: (args, res) => presentLensResult(args as LensArgs, res),
-      async execute(args, options) {
+      presentCall: (args: LensArgs) => presentLensCall(args),
+      presentResult: (args: LensArgs, res: { content: readonly { type: string; text?: string }[]; isError: boolean }) =>
+        presentLensResult(args, res),
+      async execute(args: LensArgs, options: { signal?: AbortSignal }): Promise<CodeGraphResult> {
         const lensArgs = args as LensArgs
         const workspaceRoot = process.cwd()
         const scanDir = lensArgs.scope ? resolve(workspaceRoot, lensArgs.scope) : workspaceRoot
 
-        // 1. AST Indexing
-        const analyzer = new CodeAnalyzer()
-        const store = await analyzer.indexDirectory(scanDir, options.signal)
+        // AST Indexing (Incremental with cache)
+        const store = await analyzer.indexDirectory(scanDir, options.signal, {
+          forceReindex: !useCache,
+        })
 
-        // 2. Match Target Nodes
-        const matchedNodes = store.findNodes(args.target)
+        const targetQuery = lensArgs.target?.trim() ?? ''
 
-        if (matchedNodes.length === 0) {
-          const emptyResult: CodeGraphResult = {
-            target: args.target,
-            action: args.action,
+        // Specialized Diagnostics Actions
+        if (lensArgs.action === 'circular') {
+          return buildCircularResult(store, targetQuery, lensArgs.scope)
+        }
+
+        if (lensArgs.action === 'metrics') {
+          return buildMetricsResult(store, targetQuery)
+        }
+
+        // Match Target Nodes for target-based actions
+        if (!targetQuery) {
+          return {
+            target: '',
+            action: lensArgs.action,
             rootNodes: [],
             nodes: [],
             edges: [],
-            summary: `No matching symbol or file found for target '${args.target}' in scope '${args.scope ?? '.'}'.`,
+            summary: `Error: 'target' parameter is required for action '${lensArgs.action}'.`,
+          }
+        }
+
+        const matchedNodes = store.findNodes(targetQuery)
+
+        if (matchedNodes.length === 0) {
+          const emptyResult: CodeGraphResult = {
+            target: targetQuery,
+            action: lensArgs.action,
+            rootNodes: [],
+            nodes: [],
+            edges: [],
+            summary: `No matching symbol or file found for target '${targetQuery}' in scope '${lensArgs.scope ?? '.'}'.`,
           }
           return emptyResult
         }
 
-        // 3. Graph Traversal
-        const depth = Math.min(args.depth ?? defaultDepth, 5)
-        let direction: 'inbound' | 'outbound' | 'both' = args.direction ?? 'both'
+        const depth = Math.min(lensArgs.depth ?? defaultDepth, 5)
 
-        if (args.action === 'impact') {
-          // Impact analysis tracks upstream dependants/callers
-          direction = args.direction ?? 'inbound'
-        } else if (args.action === 'dependencies') {
-          // Dependencies default to imports/dependencies
-          direction = args.direction ?? 'outbound'
+        // Handle Impact Blast Radius Action
+        if (lensArgs.action === 'impact') {
+          const impactAnalysis = analyzeImpact(store, targetQuery, depth)
+          const rootIds = matchedNodes.map((n) => n.id)
+          const traversal = store.traverse(rootIds, 'inbound', depth)
+
+          return {
+            target: targetQuery,
+            action: 'impact',
+            rootNodes: matchedNodes,
+            nodes: traversal.nodes,
+            edges: traversal.edges,
+            summary: impactAnalysis.summary,
+            impactTiers: impactAnalysis.impactTiers,
+          }
+        }
+
+        // Handle standard dependencies / call_graph
+        let direction: 'inbound' | 'outbound' | 'both' = lensArgs.direction ?? 'both'
+        if (lensArgs.action === 'dependencies') {
+          direction = lensArgs.direction ?? 'outbound'
         }
 
         const rootIds = matchedNodes.map((n) => n.id)
         const traversal = store.traverse(rootIds, direction, depth)
 
-        // 4. Summarize
         let summary = ''
-        if (args.action === 'impact') {
-          const impactedFiles = new Set(traversal.nodes.map((n) => n.filePath)).size
-          summary = `Modifying '${args.target}' potentially impacts ${impactedFiles} file(s) and ${traversal.nodes.length} symbol(s).`
-        } else if (args.action === 'dependencies') {
+        if (lensArgs.action === 'dependencies') {
           summary = `Explored ${traversal.nodes.length} node(s) across depth ${depth}.`
         } else {
           summary = `Discovered ${traversal.nodes.length} connected symbol(s) in call graph.`
         }
 
-        const result: CodeGraphResult = {
-          target: args.target,
-          action: args.action,
+        return {
+          target: targetQuery,
+          action: lensArgs.action,
           rootNodes: matchedNodes,
           nodes: traversal.nodes,
           edges: traversal.edges,
           summary,
         }
-
-        return result
       },
     }),
   )

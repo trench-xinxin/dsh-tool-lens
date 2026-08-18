@@ -6,7 +6,9 @@ export default defineConfig({
     invariant: 'src/invariant.ts',
   },
   format: ['esm'],
-  shims: true,
+  outDir: 'lib',
+  clean: true,
+  dts: true,
   external: [
     'typescript',
     '@deepseek-ai/cordis',

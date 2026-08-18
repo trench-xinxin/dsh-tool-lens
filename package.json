@@ -1,57 +1,53 @@
 {
   "name": "@trench-xinxin/dsh-tool-lens",
   "description": "DeepSeek Lens: Deep AST code graph, symbol call hierarchies, and refactoring impact analysis tool plugin for DeepSeek Harness",
-  "version": "0.1.2",
+  "version": "0.3.0",
   "private": false,
   "publishConfig": {
     "access": "public"
   },
   "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsdown"
+  },
   "bin": {
     "dsh-lens": "./bin/dsh-lens.js",
     "lens": "./bin/dsh-lens.js"
   },
-  "main": "lib/index.js",
-  "types": "lib/types/index.d.ts",
+  "main": "lib/index.mjs",
+  "types": "lib/index.d.mts",
   "exports": {
     ".": {
-      "types": "./lib/types/index.d.ts",
-      "default": "./lib/index.js"
+      "types": "./lib/index.d.mts",
+      "default": "./lib/index.mjs"
     },
     "./invariant": {
-      "types": "./lib/types/invariant.d.ts",
-      "default": "./lib/invariant.js"
+      "types": "./lib/invariant.d.mts",
+      "default": "./lib/invariant.mjs"
     },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
-    "lib/index.js",
-    "lib/invariant.js",
-    "lib/types/**/*.d.ts",
+    "lib/index.mjs",
+    "lib/invariant.mjs",
+    "lib/index.d.mts",
+    "lib/invariant.d.mts",
     "bin/dsh-lens.js",
     "README.md",
     "README.zh.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "license": "MIT",
-  "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-system-prompt": "workspace:^",
-    "@deepseek-ai/dsh-tools": "workspace:^"
-  },
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:^",
     "typescript": "^5.0.0 || ^6.0.0"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-system-prompt": "workspace:^",
-    "@deepseek-ai/dsh-tools": "workspace:^",
-    "typescript": "^5.0.0 || ^6.0.0"
+    "@types/node": "^26.2.0",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.0"
   }
 }

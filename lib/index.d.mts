@@ -1,0 +1,512 @@
+import Schema from "@deepseek-ai/schemastery";
+import { ToolCallView, ToolResultView } from "@deepseek-ai/dsh-tools";
+import { Context } from "@deepseek-ai/cordis";
+//#region src/core/types.d.ts
+/**
+ * Core domain types and contracts for DeepSeek Lens.
+ * @module @trench-xinxin/dsh-tool-lens/core/types
+ */
+type CodeNodeKind = 'file' | 'function' | 'class' | 'interface' | 'type' | 'variable';
+type CodeEdgeRelation = 'imports' | 'calls' | 'contains' | 'implements' | 'extends';
+type CodeGraphAction = 'dependencies' | 'call_graph' | 'impact' | 'circular' | 'metrics';
+interface CodeGraphNode {
+  /** Unique composite identifier: e.g., `src/index.ts` or `src/index.ts#apply:10` */
+  id: string;
+  /** Human-readable symbol name or file path */
+  name: string;
+  /** The kind of code construct */
+  kind: CodeNodeKind;
+  /** Relative file path */
+  filePath: string;
+  /** Starting line number (1-based), if applicable */
+  line?: number;
+  /** Ending line number (1-based), if applicable */
+  endLine?: number;
+}
+interface CodeGraphEdge {
+  /** Source node ID */
+  from: string;
+  /** Target node ID */
+  to: string;
+  /** Type of relationship */
+  relation: CodeEdgeRelation;
+}
+/** Represents a single detected circular dependency cycle */
+interface CircularCycle {
+  /** Sequence of file paths or symbol IDs forming the cycle */
+  cycle: string[];
+  /** Cycle length */
+  length: number;
+}
+/** Diagnostic metrics for an individual module file */
+interface ModuleMetric {
+  filePath: string;
+  /** Afferent coupling (Ca): number of incoming dependencies from other modules */
+  afferentCoupling: number;
+  /** Efferent coupling (Ce): number of outgoing dependencies to other modules */
+  efferentCoupling: number;
+  /** Instability index: I = Ce / (Ca + Ce), ranging from 0.0 (completely stable) to 1.0 (completely unstable) */
+  instability: number;
+}
+/** Centrality hub ranking item */
+interface TopHub {
+  id: string;
+  name: string;
+  kind: CodeNodeKind;
+  filePath: string;
+  degree: number;
+  inboundDegree: number;
+  outboundDegree: number;
+}
+/** Comprehensive architecture health metrics for the indexed workspace */
+interface ProjectMetrics {
+  totalFiles: number;
+  totalSymbols: number;
+  totalEdges: number;
+  modules: ModuleMetric[];
+  topHubs: TopHub[];
+  averageInstability: number;
+}
+/** Tiered blast-radius impact analysis for refactoring */
+interface ImpactTiers {
+  targetNode: CodeGraphNode;
+  /** Tier 0: Direct external callers/consumers that will break if the API signature changes */
+  directBreaking: CodeGraphNode[];
+  /** Tier 1: Internal functions/methods within the same file/class affected by cascade */
+  internalCascading: CodeGraphNode[];
+  /** Tier 2: Upstream files that transitively import this module */
+  transitiveImporters: CodeGraphNode[];
+}
+interface CodeGraphResult {
+  target: string;
+  action: CodeGraphAction;
+  rootNodes: CodeGraphNode[];
+  nodes: CodeGraphNode[];
+  edges: CodeGraphEdge[];
+  summary: string;
+  circularCycles?: CircularCycle[];
+  metrics?: ProjectMetrics;
+  impactTiers?: ImpactTiers;
+}
+interface LensArgs {
+  action: CodeGraphAction;
+  target?: string;
+  depth?: number;
+  direction?: 'inbound' | 'outbound' | 'both';
+  scope?: string;
+}
+/** Intermediate serialized data for an indexed file */
+interface FileIndexCache {
+  filePath: string;
+  mtimeMs: number;
+  hash: string;
+  nodes: CodeGraphNode[];
+  edges: CodeGraphEdge[];
+  imports: string[];
+  bindings: Record<string, {
+    importedName: string;
+    localName: string;
+    sourcePath: string;
+    isNamespace?: boolean;
+  }>;
+  pendingCalls: {
+    callerId: string;
+    calleeName: string;
+    calleeObject?: string;
+  }[];
+  pendingHeritages: {
+    sourceId: string;
+    targetName: string;
+    relation: 'extends' | 'implements';
+  }[];
+}
+/** Snapshot for disk persistence (.dsh/lens-cache.json) */
+interface CacheSnapshot {
+  version: string;
+  timestamp: number;
+  rootDir: string;
+  files: Record<string, FileIndexCache>;
+}
+/** Status of a file during incremental delta check */
+type FileDeltaStatus = 'unchanged' | 'modified' | 'added' | 'deleted';
+/** Statistics of an incremental indexing run */
+interface IncrementalIndexStats {
+  totalFiles: number;
+  cachedFiles: number;
+  indexedFiles: number;
+  deletedFiles: number;
+  durationMs: number;
+}
+//#endregion
+//#region src/core/graph.d.ts
+/**
+ * An in-memory directed graph with bidirectional adjacency indexes
+ * supporting fast depth-bounded exploration, cycle detection, and architecture metrics.
+ */
+declare class GraphStore {
+  private readonly nodes;
+  private readonly outbound;
+  private readonly inbound;
+  /** Add or update a node in the graph. */
+  addNode(node: CodeGraphNode): void;
+  /** Add a directed edge from source to target. */
+  addEdge(edge: CodeGraphEdge): void;
+  /** Batch add nodes and edges to graph. */
+  bulkAdd(nodes: CodeGraphNode[], edges: CodeGraphEdge[]): void;
+  /**
+   * Safely removes all nodes and edges belonging to a file path.
+   * Cleans up both outbound and inbound edges from connecting external nodes.
+   */
+  removeFile(filePath: string): void;
+  /** Retrieve a node by its unique ID. */
+  getNode(id: string): CodeGraphNode | undefined;
+  /** Retrieve all nodes. */
+  getAllNodes(): CodeGraphNode[];
+  /** Retrieve all edges. */
+  getAllEdges(): CodeGraphEdge[];
+  /** Get outbound edges for a node. */
+  getOutboundEdges(nodeId: string): CodeGraphEdge[];
+  /** Get inbound edges for a node. */
+  getInboundEdges(nodeId: string): CodeGraphEdge[];
+  /** Find all nodes whose name, filePath, or ID match the query string. */
+  findNodes(query: string): CodeGraphNode[];
+  /**
+   * Breadth-first traversal up to maxDepth starting from the specified root IDs.
+   * @param rootIds - The starting node IDs.
+   * @param direction - 'inbound' (upstream callers/importers), 'outbound' (downstream callees/dependencies), or 'both'.
+   * @param maxDepth - Maximum edge traversal depth.
+   */
+  traverse(rootIds: string[], direction?: 'inbound' | 'outbound' | 'both', maxDepth?: number): {
+    nodes: CodeGraphNode[];
+    edges: CodeGraphEdge[];
+  };
+  /**
+   * Detects all circular dependency cycles (e.g., file imports A -> B -> C -> A).
+   * Uses DFS cycle detection with canonical cycle normalization to avoid duplicates.
+   */
+  findCircularDependencies(options?: {
+    edgeRelation?: CodeEdgeRelation;
+    scopePrefix?: string;
+  }): CircularCycle[];
+  /**
+   * Computes architecture coupling metrics (Ca, Ce, Instability) and Top Hubs.
+   */
+  calculateMetrics(): ProjectMetrics;
+  /**
+   * Analyzes refactoring blast-radius impact for a specific node with 3 tiers.
+   */
+  analyzeImpactTiers(targetId: string): ImpactTiers | undefined;
+  /** Total number of nodes in the graph. */
+  get size(): number;
+  /** Clear all graph data. */
+  clear(): void;
+}
+//#endregion
+//#region src/core/cache.d.ts
+declare class IncrementalCacheStore {
+  private readonly cache;
+  /** Get cached index for a relative file path. */
+  get(relPath: string): FileIndexCache | undefined;
+  /** Set or update cached index for a file. */
+  set(relPath: string, fileCache: FileIndexCache): void;
+  /** Check if a file is in cache. */
+  has(relPath: string): boolean;
+  /** Delete a file from cache. */
+  delete(relPath: string): boolean;
+  /** Clear all cached file data. */
+  clear(): void;
+  /** Total number of cached files. */
+  get size(): number;
+  /** List of all relative file paths currently cached. */
+  getAllFiles(): string[];
+  /**
+   * Fast SHA-256 content hashing.
+   */
+  computeHash(content: string): string;
+  /**
+   * Determines if a file has changed by inspecting mtime and fallback content hash.
+   * @param relPath - Relative path from rootDir
+   * @param rootDir - Workspace root directory
+   */
+  checkFileStatus(relPath: string, rootDir: string): {
+    status: FileDeltaStatus;
+    mtimeMs: number;
+    hash?: string;
+    content?: string;
+  };
+  /**
+   * Serializes current cache to disk JSON snapshot.
+   * @param snapshotPath - File path (e.g. `<workspace>/.dsh/lens-cache.json`)
+   * @param rootDir - Workspace root directory
+   */
+  saveToFile(snapshotPath: string, rootDir: string): boolean;
+  /**
+   * Loads cache snapshot from disk JSON file.
+   * @param snapshotPath - File path to load
+   */
+  loadFromFile(snapshotPath: string): boolean;
+}
+//#endregion
+//#region src/parsers/config-parser.d.ts
+/**
+ * tsconfig.json and jsconfig.json path alias resolver for TypeScript projects.
+ * @module @trench-xinxin/dsh-tool-lens/parsers/config-parser
+ */
+declare const SUPPORTED_EXTENSIONS: string[];
+interface PathMappingRule {
+  pattern: RegExp;
+  targets: string[];
+}
+/**
+ * Parses tsconfig.json / jsconfig.json to extract baseUrl and path alias mappings.
+ */
+declare class ConfigParser {
+  private baseUrl;
+  private readonly mappings;
+  constructor(rootDir: string);
+  /** Load and parse tsconfig.json or jsconfig.json in the specified root directory. */
+  private loadConfig;
+  /**
+   * Resolves a module specifier against path mappings.
+   * @param specifier - e.g. "@/components/Button" or "@utils"
+   * @param rootDir - Workspace root directory
+   */
+  resolveAlias(specifier: string, rootDir: string): string[];
+}
+/**
+ * Resolves a module specifier (relative or path alias) to a workspace relative file path.
+ */
+declare function resolveModulePath(currentRelPath: string, importPath: string, rootDir: string, configParser?: ConfigParser, knownFiles?: Iterable<string>): string | null;
+//#endregion
+//#region src/parsers/ts-parser.d.ts
+/**
+ * Parses files in a workspace into an AST and populates a GraphStore
+ * with file, symbol, import, extends, implements, and scope-aware call hierarchy relations.
+ */
+declare class TSParser {
+  private readonly graph;
+  private configParser?;
+  private readonly cacheStore;
+  private readonly fileSymbols;
+  private readonly fileImports;
+  private readonly fileBindings;
+  private readonly pendingCalls;
+  private readonly pendingHeritages;
+  constructor(graph?: GraphStore, cacheStore?: IncrementalCacheStore);
+  /** Get the underlying GraphStore. */
+  getGraph(): GraphStore;
+  /** Get the underlying IncrementalCacheStore. */
+  getCacheStore(): IncrementalCacheStore;
+  /**
+   * Recursively scans and analyzes all source files under the root directory with incremental caching.
+   * @param rootDir - Root directory to index.
+   * @param signal - Optional abort signal to cancel long scans.
+   */
+  indexDirectory(rootDir: string, signal?: AbortSignal): Promise<GraphStore>;
+  /**
+   * High-performance incremental directory indexing.
+   * Reuses AST results for unchanged files and only parses modified/added files.
+   */
+  indexDirectoryIncremental(rootDir: string, signal?: AbortSignal): Promise<IncrementalIndexStats>;
+  /**
+   * Invalidates a single file and reloads it incrementally into the graph.
+   * Useful for watch mode or single-file edits.
+   */
+  invalidateAndReloadFile(relPath: string, rootDir: string): void;
+  /**
+   * Analyzes single file content and registers symbols and relations into the graph.
+   * @param relPath - Relative path of the file from workspace root.
+   * @param content - File text content.
+   * @param rootDir - Workspace root directory.
+   * @param autoLink - Whether to resolve calls and heritages immediately (defaults to true for standalone use).
+   */
+  analyzeSourceCode(relPath: string, content: string, rootDir: string, autoLink?: boolean): void;
+  /** Restores memory state and GraphStore from a cached file entry. */
+  private restoreFromCache;
+  private removeFileFromMemoryIndex;
+  /** Resolves all pending function and method calls across files using 4-tier scope awareness. */
+  private linkAllCalls;
+  /** Resolves all pending extends and implements OOP relationships. */
+  private linkAllHeritages;
+  private createSymbolNode;
+  private extractCallsInSymbol;
+  private collectSourceFiles;
+}
+//#endregion
+//#region src/parsers/watcher.d.ts
+/**
+ * Workspace file change watcher with debounce and directory filter.
+ * Automatically synchronizes AST graph state during active development.
+ * @module @trench-xinxin/dsh-tool-lens/parsers/watcher
+ */
+interface WatcherOptions {
+  debounceMs?: number;
+  onFilesChanged: (changedRelPaths: string[]) => void | Promise<void>;
+}
+declare class LensWatcher {
+  private readonly rootDir;
+  private watcher;
+  private readonly pendingChanges;
+  private debounceTimer;
+  private readonly debounceMs;
+  private readonly onFilesChanged;
+  private isClosed;
+  constructor(rootDir: string, options: WatcherOptions);
+  /** Starts watching the root directory recursively. */
+  start(): boolean;
+  /** Closes the active watcher. */
+  close(): void;
+  private scheduleFlush;
+}
+//#endregion
+//#region src/analytics/circular.d.ts
+interface CircularAnalysisResult {
+  cycles: CircularCycle[];
+  totalCycles: number;
+  impactedFiles: string[];
+}
+/**
+ * Runs circular dependency analysis on the provided GraphStore.
+ * @param graph - Populated graph store
+ * @param scope - Optional scope directory filter
+ */
+declare function analyzeCircularDependencies(graph: GraphStore, scope?: string): CircularAnalysisResult;
+/**
+ * Encapsulates circular analysis into a standard CodeGraphResult.
+ */
+declare function buildCircularResult(graph: GraphStore, target: string, scope?: string): CodeGraphResult;
+//#endregion
+//#region src/analytics/metrics.d.ts
+/**
+ * Computes architectural metrics across all indexed modules and symbols.
+ * @param graph - Populated graph store
+ */
+declare function analyzeProjectMetrics(graph: GraphStore): ProjectMetrics;
+/**
+ * Encapsulates architecture metrics into a standard CodeGraphResult.
+ */
+declare function buildMetricsResult(graph: GraphStore, target?: string): CodeGraphResult;
+//#endregion
+//#region src/analytics/impact.d.ts
+interface ImpactAnalysisResult {
+  rootNodes: CodeGraphNode[];
+  traversalNodes: CodeGraphNode[];
+  impactTiers?: ImpactTiers;
+  summary: string;
+}
+/**
+ * Evaluates the blast radius of modifying a target symbol or file.
+ * @param graph - Populated graph store
+ * @param target - Target symbol or file query
+ * @param depth - Traversal depth (default: 3)
+ */
+declare function analyzeImpact(graph: GraphStore, target: string, depth?: number): ImpactAnalysisResult;
+//#endregion
+//#region src/render/mermaid.d.ts
+/**
+ * Generates a Mermaid flowchart string from graph nodes and edges.
+ * @param nodes - Nodes to render in diagram
+ * @param edges - Edges connecting nodes
+ * @param maxNodes - Max nodes to render before skipping diagram (default: 25)
+ */
+declare function generateMermaidDiagram(nodes: CodeGraphNode[], edges: CodeGraphEdge[], maxNodes?: number): string | null;
+//#endregion
+//#region src/render/markdown.d.ts
+/**
+ * Formats a CodeGraphResult into structured, compact markdown for the model response.
+ * @param result - The graph query result.
+ * @returns Human and model-readable markdown summary.
+ */
+declare function formatGraphMarkdown(result: CodeGraphResult): string;
+//#endregion
+//#region src/render/presenter.d.ts
+/**
+ * Pure presenter for the tool-call pending card.
+ * @param args - Tool invocation arguments.
+ */
+declare function presentLensCall(args: LensArgs): ToolCallView;
+/**
+ * Pure presenter for the completed tool result card.
+ * @param args - Tool invocation arguments.
+ * @param executionResult - Result envelope containing content and error state.
+ */
+declare function presentLensResult(args: LensArgs, executionResult: {
+  content: readonly {
+    type: string;
+    text?: string;
+  }[];
+  isError: boolean;
+}): ToolResultView;
+//#endregion
+//#region src/analyzer.d.ts
+/**
+ * Facade providing high-level directory indexing, single-file AST parsing,
+ * incremental caching, and workspace watching.
+ */
+declare class CodeAnalyzer {
+  private readonly parser;
+  private watcher;
+  constructor(graph?: GraphStore, cacheStore?: IncrementalCacheStore);
+  /** Get the underlying GraphStore. */
+  getGraph(): GraphStore;
+  /** Get the underlying IncrementalCacheStore. */
+  getCacheStore(): IncrementalCacheStore;
+  /**
+   * Recursively scans and analyzes all source files under the root directory.
+   * Leverages incremental cache by default for sub-20ms warm queries.
+   * @param rootDir - Root directory to index.
+   * @param signal - Optional abort signal to cancel long scans.
+   * @param options - Optional flags (e.g., forceReindex to bypass cache).
+   */
+  indexDirectory(rootDir: string, signal?: AbortSignal, options?: {
+    forceReindex?: boolean;
+  }): Promise<GraphStore>;
+  /**
+   * Runs incremental directory indexing and returns execution statistics.
+   */
+  indexDirectoryIncremental(rootDir: string, signal?: AbortSignal): Promise<IncrementalIndexStats>;
+  /**
+   * Analyzes single file content and registers symbols and relations into the graph.
+   * @param relPath - Relative path of the file from workspace root.
+   * @param content - File text content.
+   * @param rootDir - Workspace root directory.
+   * @param autoLink - Whether to resolve calls and heritages immediately.
+   */
+  analyzeSourceCode(relPath: string, content: string, rootDir: string, autoLink?: boolean): void;
+  /**
+   * Hot-reloads a single file incrementally upon modification.
+   */
+  invalidateAndReloadFile(relPath: string, rootDir: string): void;
+  /**
+   * Creates and starts a filesystem watcher to keep the AST graph synchronized in real-time.
+   */
+  createWatcher(rootDir: string, debounceMs?: number): LensWatcher;
+  /** Closes any active workspace watcher. */
+  closeWatcher(): void;
+}
+//#endregion
+//#region src/index.d.ts
+/** Cordis plugin name for diagnostics and composition. */
+declare const name = "tool-lens";
+/** Services required by this plugin. */
+declare const inject: string[];
+/** System prompt guidance describing the purpose and usage of the tool. */
+declare const LENS_PROMPT_TEXT = "Use the lens tool when you need to understand symbol relationships across files, tracking callers/callees, exploring module dependencies, auditing circular dependencies, evaluating architecture coupling metrics, or measuring the blast radius of refactoring.";
+/** Plugin configuration schema. */
+interface Config {
+  /** Maximum default graph traversal depth (default: 3). */
+  maxDepth?: number;
+  /** Enable incremental caching for sub-20ms warm queries (default: true). */
+  cache?: boolean;
+  /** Automatically watch workspace files for live graph updates (default: false). */
+  watch?: boolean;
+}
+declare const Config: Schema<Config>;
+/**
+ * Register the `lens` tool and its system-prompt guidance.
+ * @param ctx - Cordis Context with injected services.
+ * @param config - Plugin configuration.
+ */
+declare function apply(ctx: Context, config?: Config): void;
+//#endregion
+export { CacheSnapshot, CircularAnalysisResult, CircularCycle, CodeAnalyzer, CodeEdgeRelation, CodeGraphAction, CodeGraphEdge, CodeGraphNode, CodeGraphResult, CodeNodeKind, Config, ConfigParser, FileDeltaStatus, FileIndexCache, GraphStore, ImpactAnalysisResult, ImpactTiers, IncrementalCacheStore, IncrementalIndexStats, LENS_PROMPT_TEXT, LensArgs, LensWatcher, ModuleMetric, PathMappingRule, ProjectMetrics, SUPPORTED_EXTENSIONS, TSParser, TopHub, WatcherOptions, analyzeCircularDependencies, analyzeImpact, analyzeProjectMetrics, apply, buildCircularResult, buildMetricsResult, formatGraphMarkdown, generateMermaidDiagram, inject, name, presentLensCall, presentLensResult, resolveModulePath };

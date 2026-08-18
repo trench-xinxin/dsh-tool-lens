@@ -10,7 +10,7 @@
 
 **DeepSeek Lens** 是专为 **DeepSeek Harness** 智能体底座打造的高性能、确定性 AST 代码图谱与拓扑分析工具插件。
 
-它为 AI Agent 赋予深度的代码结构与全局感知能力，支持即时模块依赖分析、函数/类方法调用链追踪以及重构改动影响面（Blast Radius）分析。
+它弥补了大模型在大型代码库中“代码阅读盲目”、“全局拓扑模糊”、“重构破坏面预估不准”的固有短板，为 AI Agent 赋予深度的代码结构与全局感知能力，支持即时模块依赖分析、函数/类方法调用链追踪、OOP 继承拓扑、循环引用审计、架构耦合度度量以及重构爆炸半径三级分级评估。
 
 ---
 
@@ -23,68 +23,58 @@
 npx @trench-xinxin/dsh-tool-lens
 
 # 或直接运行一次性任务
-npx @trench-xinxin/dsh-tool-lens "使用 lens 工具分析 src/index.ts 的模块依赖"
+npx @trench-xinxin/dsh-tool-lens "使用 lens 工具审计项目中的循环依赖"
 ```
 
 ---
 
-## 🌟 核心特性
+## 🌟 核心特性矩阵 (v0.2.0)
 
-1. **📦 模块与文件依赖分析 (`dependencies`)**
+1. **📦 模块与依赖拓扑 (`dependencies`)**
    - 精准解析 ES 模块与 CommonJS 的 `import` / `export` 引用。
-   - 支持 Monorepo 与本地跨包路径映射。
+   - **Re-export 完整支持**：支持 `export * from './mod'` 及具名别名重导出。
+   - **Path Mapping**：自动识别 `tsconfig.json` 的 `compilerOptions.paths` 别名（如 `@/*`）。
 
-2. **📞 函数与方法调用链路 (`call_graph`)**
+2. **📞 精准消歧调用链 (`call_graph`)**
    - 深入解析普通函数、箭头函数以及类成员方法。
-   - 支持追踪**上游调用者（Inbound Callers）**、**下游被调用者（Outbound Callees）**或双向调用链。
-   - 完美解析跨文件对象实例方法调用（如 `analyzer.analyzeSourceCode()`）。
+   - **4-Tier 作用域消歧**：优先绑定同文件、显式导入（`import { fn }`）与命名空间导入（`Mod.fn`），彻底消除全局同名函数误报。
+   - **OOP 关系提取**：自动提取类与接口的 `extends` 继承和 `implements` 实现拓扑。
 
-3. **💥 重构影响面分析 (`impact`)**
+3. **💥 重构影响面智能分级 (`impact`)**
    - 评估修改或删除某个符号/文件对整个项目的潜在爆炸半径。
-   - 快速列出所有直接与间接依赖该符号的文件与函数。
+   - **三级风险智能分级**：
+     - 🔴 **Tier 0 Direct Breaking**：直接依赖该符号/接口的外部 Callers 与直接 Importers。
+     - 🟡 **Tier 1 Internal Cascading**：同模块内部受级联影响的函数。
+     - 🔵 **Tier 2 Transitive Importers**：上游间接引入该模块的文件。
 
-4. **🔍 智能模糊与短名匹配**
-   - 自动解析类成员短名（例如传入 `analyzeSourceCode` 自动匹配 `CodeAnalyzer.analyzeSourceCode`）。
-   - 自动解析相对路径后缀（例如传入 `src/index.ts` 自动匹配 `packages/lens/tool-lens/src/index.ts`）。
+4. **🔄 闭合循环依赖审计 (`circular`)**
+   - 基于 Tarjan 强连通分量与 DFS 染色算法，一键检测所有闭合环路（如 `A -> B -> C -> A`）。
+   - 输出环路链路与受波及文件清单，规避运行时初始化死锁与内存泄露。
 
-5. **🎨 DeepSeek Harness 原生适配**
-   - 自动注册到 `ctx.tools`，并向 `ctx.systemPrompt` 注入工具指引。
-   - 为大模型推理生成紧凑的 Markdown 结构，同时为 Web UI 轨迹面板提供结构化卡片渲染。
+5. **⚡ 毫秒级增量缓存与实时 Watch 模式 (`incremental & watch`)**
+   - 基于 `mtime` 与 `SHA-256` 内容哈希，二次查询未修改文件 100% 命中缓存，实现毫秒级响应（< 20ms）。
+   - 自动支持 `.dsh/lens-cache.json` 磁盘快照持久化。
+   - 提供 `LensWatcher` 100ms 防抖监听，源码变动时自动热同步图谱。
 
----
+6. **📊 架构健康度与耦合度指标 (`metrics`)**
+   - **扇入（Afferent Coupling, $Ca$）** 与 **扇出（Efferent Coupling, $Ce$）**。
+   - **不稳定度（Instability, $I = Ce / (Ca + Ce)$）** 评估模块易碎性。
+   - **Top Hubs 核心枢纽符号榜**：快速定位 God Class 与核心高频调用节点。
 
-## 🚀 高级接入方式（手动配置 Cordis YAML）
-
-如果你需要在自己的 Cordis Profile 或工程配置文件中引用：
-
-### 1. 安装
-
-```bash
-pnpm add @trench-xinxin/dsh-tool-lens
-# 或使用 npm / yarn
-npm install @trench-xinxin/dsh-tool-lens
-```
-
-### 2. 配置文件 (`cordis.yml`)
-
-```yaml
-- insert:
-    - id: tool-lens
-      name: '@trench-xinxin/dsh-tool-lens'
-      config:
-        maxDepth: 3
-```
+7. **🎨 Mermaid 可视化与 Token 防溢出**
+   - 节点数 $\le 25$ 时自动生成交互式 Mermaid 拓扑流程图。
+   - 节点数 $> 50$ 时启动智能折叠截断，彻底避免大模型 Context 溢出。
 
 ---
 
-## 📖 工具参数说明
+## 📖 工具参数与 Action 说明
 
 大模型通过 `lens` 工具与代码图谱交互：
 
 | 参数名 | 类型 | 必填 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- | :--- |
-| `action` | `enum` | **是** | — | `'dependencies'` (模块依赖), `'call_graph'` (函数调用链), 或 `'impact'` (改动影响面)。 |
-| `target` | `string` | **是** | — | 待分析的符号名称、方法名或文件相对路径。 |
+| `action` | `enum` | **是** | — | `'dependencies'` (模块依赖), `'call_graph'` (调用链), `'impact'` (改动分级影响面), `'circular'` (循环依赖审计), 或 `'metrics'` (耦合度健康分析)。 |
+| `target` | `string` | 否 | `.` | 待分析的符号名称、方法名或文件相对路径（在 `circular` 与 `metrics` 模式下可选）。 |
 | `depth` | `number` | 否 | `3` | 最大图谱遍历深度（1 到 5 层）。 |
 | `direction` | `enum` | 否 | `both` | `'inbound'` (上游调用/引用), `'outbound'` (下游依赖/调用), 或 `'both'` (双向)。 |
 | `scope` | `string` | 否 | `.` | 限制扫描的子目录范围（默认整个工作区）。 |
@@ -93,57 +83,70 @@ npm install @trench-xinxin/dsh-tool-lens
 
 ## 💡 使用示例与大模型交互效果
 
-### 场景一：分析模块依赖关系
-**用户**：*“请使用 lens 工具分析 `packages/lens/tool-lens/src/index.ts` 的模块依赖关系”*
+### 场景一：循环依赖审计
+**用户**：*“请使用 lens 审计当前项目的循环依赖”*
 
-**输出效果**：
 ```markdown
-### Lens: dependencies for `packages/lens/tool-lens/src/index.ts`
-*Found 30 connected node(s) and 41 relationship(s).*
+### Lens: Circular Dependency Audit
+> ⚠️ Detected 1 circular dependency cycle(s) involving 3 file(s).
 
-**Root Node(s):**
-- **[file]** `packages/lens/tool-lens/src/index.ts`
-
-**Connected Symbols / Files:**
-- `packages/lens/tool-lens/src/analyzer.ts`:
-  - [class] `CodeAnalyzer` (line 19)
-- `packages/lens/tool-lens/src/render.ts`:
-  - [function] `formatGraphMarkdown` (line 14)
-...
+**Detected Cycles:**
+#### Cycle #1 (3 nodes)
+```text
+src/a.ts 
+  └──> src/b.ts 
+  └──> src/c.ts 
+  └──> src/a.ts
+```
 ```
 
-### 场景二：重构影响面评估
-**用户**：*“如果我修改 analyzeSourceCode 函数，会影响哪些地方？”*
+### 场景二：重构爆炸半径分级
+**用户**：*“如果我修改 `CodeAnalyzer.analyzeSourceCode` 会影响哪些地方？”*
 
-**输出效果**：
 ```markdown
-### Lens: impact for `CodeAnalyzer.analyzeSourceCode`
-*Found 5 connected node(s) and 5 relationship(s).*
+### Lens: Refactoring Impact Analysis for `CodeAnalyzer.analyzeSourceCode`
+> **Blast Radius**: Modifying 'CodeAnalyzer.analyzeSourceCode' results in 2 direct breaking caller(s), 1 internal cascade(s), and 3 transitive importer(s).
 
-> **Summary**: Modifying 'CodeAnalyzer.analyzeSourceCode' potentially impacts 3 file(s) and 5 symbol(s).
+#### 🔴 Tier 0: Direct Breaking Risk (External Callers / Importers)
+- **[function]** `runCli` (`bin/dsh-lens.js:20`)
+
+#### 🟡 Tier 1: Internal Cascading Risk (Same-File Functions / Methods)
+- **[function]** `CodeAnalyzer.indexDirectory` (`src/analyzer.ts:45`)
 ```
 
 ---
 
-## 🛠 目录结构
+## 🏗 分层架构目录
 
 ```
 packages/lens/tool-lens/
 ├── bin/
-│   └── dsh-lens.js   # 零配置命令行启动器
+│   └── dsh-lens.js         # 零配置命令行启动器
 ├── src/
-│   ├── index.ts      # Cordis 插件入口与 defineTool 注册
-│   ├── analyzer.ts   # TypeScript AST 解析与跨文件多阶段符号/调用提取
-│   ├── graph.ts      # 内存有向图存储与 BFS 深度遍历算法
-│   ├── render.ts     # Markdown 输出与 UI 卡片纯函数 Presenter
-│   ├── types.ts      # 核心数据模型与参数类型定义
-│   └── invariant.ts  # Invariant 伴生插件
+│   ├── core/
+│   │   ├── types.ts        # 领域模型与契约定义
+│   │   └── graph.ts        # 核心图存储、Tarjan 环路检测、度量指标与 BFS
+│   ├── parsers/
+│   │   ├── config-parser.ts# tsconfig 别名与模块解析
+│   │   └── ts-parser.ts    # AST 解析、Re-export、OOP 继承与作用域消歧
+│   ├── analytics/
+│   │   ├── circular.ts     # 循环依赖分析器
+│   │   ├── metrics.ts      # 架构耦合度与枢纽分析器
+│   │   └── impact.ts       # 重构爆炸半径三级分级评估
+│   ├── render/
+│   │   ├── markdown.ts     # 紧凑 Markdown 格式化与 Token 裁剪
+│   │   ├── mermaid.ts      # Mermaid 拓扑图生成器
+│   │   └── presenter.ts    # DSH Web UI 卡片展示
+│   ├── analyzer.ts         # CodeAnalyzer 统一门面 (Facade)
+│   ├── graph.ts            # 兼容性导出
+│   ├── render.ts           # 兼容性导出
+│   ├── types.ts            # 兼容性导出
+│   ├── index.ts            # Cordis 插件入口与 defineTool 注册
+│   └── invariant.ts        # Invariant 伴生插件
 ├── tests/
-│   └── lens.spec.ts  # 完整的 Vitest 单元测试集
+│   └── lens.spec.ts        # 完整的 Vitest 单元测试集
 ├── package.json
-├── LICENSE
-├── README.md
-└── README.zh.md
+└── tsdown.config.ts
 ```
 
 ---
