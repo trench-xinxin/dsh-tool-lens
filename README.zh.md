@@ -11,27 +11,30 @@
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/trench-xinxin/dsh-tool-lens/blob/main/LICENSE)
 </p>[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek-Harness%20Plugin-0066FF.svg)](https://github.com/deepseek-ai/deepseek-harness)
 
-**DeepSeek Lens** 是专为 **DeepSeek Harness** 智能体底座打造的高性能、确定性 AST 代码图谱与拓扑分析工具插件。
+**DeepSeek Lens** 是专为 **DeepSeek Harness** 智能体底座打造的高性能、确定性 AST 代码图谱与架构治理分析插件。
 
-它弥补了大模型在大型代码库中“代码阅读盲目”、“全局拓扑模糊”、“重构破坏面预估不准”的固有短板，为 AI Agent 赋予深度的代码结构与全局感知能力，支持即时模块依赖分析、函数/类方法调用链追踪、OOP 继承拓扑、循环引用审计、架构耦合度度量以及重构爆炸半径三级分级评估。
+它弥补了大模型在大型代码库中“代码阅读盲目”、“全局拓扑模糊”、“重构破坏面预估不准”的固有短板，为 AI Agent 赋予深度的代码结构与全局感知能力，支持即时模块依赖分析、函数/类方法调用链追踪、OOP 继承拓扑、循环引用审计、架构耦合度度量、Git 变更增量影响审计、业务领域架构智能切片以及跨前后端全栈 API 契约追踪。
 
 ---
 
-## ⚡ 零配置一键即用（免改任何文件）
+## ⚡ 零配置一键即用（无需额外安装或启动 DeepSeek Harness）
 
-无需编写任何 YAML 配置文件，直接通过 `npx` 一行命令即可启动预载 Lens 图谱能力的 DeepSeek Harness：
+> 💡 **核心优势**：你**无需提前安装**任何 `@deepseek-ai/dsh` 全局命令，也**无需在后台单独手动启动任何 Harness 服务**！  
+> 直接运行以下一条命令，脚手架将全自动下载运行时、智能避让端口并直接拉起预载 Lens 工具的完整 Web 界面：
 
 ```bash
-# 🚀 零配置一键启动 Web 界面
+# 🚀 零配置一键拉起 Web 交互界面（开箱即用）
 npx @trench-xinxin/dsh-tool-lens
 
-# 或直接运行一次性任务
+# 或直接在终端执行一次性自然语言代码分析任务
 npx @trench-xinxin/dsh-tool-lens "使用 lens 工具审计项目中的循环依赖"
 ```
 
+启动成功后，浏览器会自动打开或访问提示的本地地址（如 `http://127.0.0.1:3080` 或 `http://127.0.0.1:3081`）。
+
 ---
 
-## 🌟 核心特性矩阵 (v0.2.0)
+## 🌟 核心特性矩阵 (v2.0)
 
 1. **📦 模块与依赖拓扑 (`dependencies`)**
    - 精准解析 ES 模块与 CommonJS 的 `import` / `export` 引用。
@@ -73,108 +76,65 @@ npx @trench-xinxin/dsh-tool-lens "使用 lens 工具审计项目中的循环依�
     - 自动识别前端（Vue / TS / Svelte）的 `axios.get('/api/users')` / `fetch` 请求，与后端（Java Spring `@GetMapping`、Python FastAPI `@app.get`、Go Gin `r.GET`）路由控制器建立**跨语言虚拟调用边**，真正打通**从前端 UI 组件直达后端数据库/服务实现的方法级端到端全链路图谱**！
 
 11. **🌍 多语言生态驱动全景支持 (`Java / Python / Go / Rust / TS / SFC`)**
-   - **Java (`.java`)**：支持 `package`、Maven/Gradle 结构、`class`、`interface`、`extends` 继承、`implements` 接口实现与类静态/实例方法调用。
-   - **Python (`.py`)**：支持 `def`、`class` 继承、`self.method()` 及相对/绝对包导入分析。
-   - **Go (`.go`)**：支持 `package` 作用域、`go.mod` 模块路径、Struct Embedding 与 Receiver 成员方法。
-   - **Rust (`.rs`)**：支持 `mod` 树、`Cargo.toml`、`trait` 定义、`impl Trait for Struct` 特质实现与关联方法。
-   - **前端 SFC**：支持 Vue 3 SFC (`.vue`) 与 Svelte (`.svelte`)。
-
-9. **⚡ 毫秒级增量缓存与实时 Watch 模式 (`incremental & watch`)**
-   - 基于 `mtime` 与 `SHA-256` 内容哈希，二次查询未修改文件 100% 命中缓存，实现毫秒级响应（< 20ms）。
-   - 自动支持 `.dsh/lens-cache.json` 磁盘快照持久化。
-   - 提供 `LensWatcher` 100ms 防抖监听，源码变动时自动热同步图谱。
-
-7. **📊 架构健康度与耦合度指标 (`metrics`)**
-   - **扇入（Afferent Coupling, $Ca$）** 与 **扇出（Efferent Coupling, $Ce$）**。
-   - **不稳定度（Instability, $I = Ce / (Ca + Ce)$）** 评估模块易碎性。
-   - **Top Hubs 核心枢纽符号榜**：快速定位 God Class 与核心高频调用节点。
-
-8. **🎨 Mermaid 可视化与 Token 防溢出**
-   - 节点数 $\le 25$ 时自动生成交互式 Mermaid 拓扑流程图。
-   - 节点数 $> 50$ 时启动智能折叠截断，彻底避免大模型 Context 溢出。
+    - **Java (`.java`)**：支持 `package`、Maven/Gradle 结构、`class`、`interface`、`extends` 继承、`implements` 接口实现与类静态/实例方法调用。
+    - **Python (`.py`)**：支持 `def`、`class` 继承、`self.method()` 及相对/绝对包导入分析。
+    - **Go (`.go`)**：支持 `package` 作用域、`go.mod` 模块路径、Struct Embedding 与 Receiver 成员方法。
+    - **Rust (`.rs`)**：支持 `mod` 模块、`struct`、`trait`、`impl Trait for Struct` 及方法调用。
+    - **Vue 3 & Svelte (`.vue`, `.svelte`)**：支持 `<script setup>`、`<template>` 内组件标签引用与单文件组件解析。
 
 ---
 
-## 📖 工具参数与 Action 说明
+## 🛠️ 参数契约定义
 
 大模型通过 `lens` 工具与代码图谱交互：
 
 | 参数名 | 类型 | 必填 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- | :--- |
-| `action` | `enum` | **是** | — | `'dependencies'` (模块依赖), `'call_graph'` (调用链), `'impact'` (改动分级影响面), `'circular'` (循环依赖审计), 或 `'metrics'` (耦合度健康分析)。 |
-| `target` | `string` | 否 | `.` | 待分析的符号名称、方法名或文件相对路径（在 `circular` 与 `metrics` 模式下可选）。 |
+| `action` | `enum` | **是** | — | `'diff_impact'`, `'api_contracts'`, `'slice'`, `'path'`, `'impact'`, `'dependencies'`, `'call_graph'`, `'circular'`, `'unused'`, `'lint'`, `'metrics'`。 |
+| `target` | `string` | 否 | `.` | 待分析的符号名称、方法名、文件相对路径或领域种子（在某些全局模式下可选）。 |
+| `to` | `string` | 否 | — | 路径寻路的目标符号或文件路径（在 `action: path` 模式下使用）。 |
+| `rules` | `string` | 否 | — | 自定义架构分层防腐规则 JSON 字符串（在 `action: lint` 模式下使用）。 |
+| `commit` | `string` | 否 | — | Git 比较的目标 Commit Hash 或范围（在 `action: diff_impact` 模式下使用）。 |
 | `depth` | `number` | 否 | `3` | 最大图谱遍历深度（1 到 5 层）。 |
 | `direction` | `enum` | 否 | `both` | `'inbound'` (上游调用/引用), `'outbound'` (下游依赖/调用), 或 `'both'` (双向)。 |
-| `scope` | `string` | 否 | `.` | 限制扫描的子目录范围（默认整个工作区）。 |
+| `scope` | `string` | 否 | `.` | 限制扫描的子目录范围（默认当前工作区）。 |
 
 ---
 
 ## 💡 使用示例与大模型交互效果
 
-### 场景一：循环依赖审计
-**用户**：*“请使用 lens 审计当前项目的循环依赖”*
+### 场景一：Git 变更增量影响审计
+**用户**：*“我刚改了几个文件，帮我分析下当前变更的影响面和回归测试建议”*
 
 ```markdown
-### Lens: Circular Dependency Audit
-> ⚠️ Detected 1 circular dependency cycle(s) involving 3 file(s).
+### Lens: Git Diff Change Impact & Regression Matrix (`git-working-tree`)
+> Git diff contains 2 modified file(s), impacting 5 upstream file(s) across 3 breaking caller(s). Recommended 2 regression test file(s).
 
-**Detected Cycles:**
-#### Cycle #1 (3 nodes)
-```text
-src/a.ts 
-  └──> src/b.ts 
-  └──> src/c.ts 
-  └──> src/a.ts
-```
-```
+**Modified Files (2):**
+- 📝 `src/core/types.ts`
+- 📝 `src/parsers/ts-parser.ts`
 
-### 场景二：重构爆炸半径分级
-**用户**：*“如果我修改 `CodeAnalyzer.analyzeSourceCode` 会影响哪些地方？”*
+**Direct Breaking Upstream Callers (3):**
+- 🔴 **[function]** `analyzeSourceCode` (`src/analyzer.ts:45`)
+- 🔴 **[function]** `buildCircularResult` (`src/analytics/circular.ts:18`)
 
-```markdown
-### Lens: Refactoring Impact Analysis for `CodeAnalyzer.analyzeSourceCode`
-> **Blast Radius**: Modifying 'CodeAnalyzer.analyzeSourceCode' results in 2 direct breaking caller(s), 1 internal cascade(s), and 3 transitive importer(s).
-
-#### 🔴 Tier 0: Direct Breaking Risk (External Callers / Importers)
-- **[function]** `runCli` (`bin/dsh-lens.js:20`)
-
-#### 🟡 Tier 1: Internal Cascading Risk (Same-File Functions / Methods)
-- **[function]** `CodeAnalyzer.indexDirectory` (`src/analyzer.ts:45`)
+**🎯 Recommended Regression Test Suite (2):**
+- 🧪 `tests/lens.spec.ts`
 ```
 
 ---
 
-## 🏗 分层架构目录
+### 场景二：跨前后端全栈 API 契约追踪
+**用户**：*“审计全栈前后端接口调用关系”*
 
-```
-packages/lens/tool-lens/
-├── bin/
-│   └── dsh-lens.js         # 零配置命令行启动器
-├── src/
-│   ├── core/
-│   │   ├── types.ts        # 领域模型与契约定义
-│   │   └── graph.ts        # 核心图存储、Tarjan 环路检测、度量指标与 BFS
-│   ├── parsers/
-│   │   ├── config-parser.ts# tsconfig 别名与模块解析
-│   │   └── ts-parser.ts    # AST 解析、Re-export、OOP 继承与作用域消歧
-│   ├── analytics/
-│   │   ├── circular.ts     # 循环依赖分析器
-│   │   ├── metrics.ts      # 架构耦合度与枢纽分析器
-│   │   └── impact.ts       # 重构爆炸半径三级分级评估
-│   ├── render/
-│   │   ├── markdown.ts     # 紧凑 Markdown 格式化与 Token 裁剪
-│   │   ├── mermaid.ts      # Mermaid 拓扑图生成器
-│   │   └── presenter.ts    # DSH Web UI 卡片展示
-│   ├── analyzer.ts         # CodeAnalyzer 统一门面 (Facade)
-│   ├── graph.ts            # 兼容性导出
-│   ├── render.ts           # 兼容性导出
-│   ├── types.ts            # 兼容性导出
-│   ├── index.ts            # Cordis 插件入口与 defineTool 注册
-│   └── invariant.ts        # Invariant 伴生插件
-├── tests/
-│   └── lens.spec.ts        # 完整的 Vitest 单元测试集
-├── package.json
-└── tsdown.config.ts
+```markdown
+### Lens: Full-Stack End-to-End API Contracts
+> Full-stack API contracts audit: Discovered 8 connected end-to-end HTTP contract(s).
+
+| Method | URL Route | Frontend Client Call | Backend Server Handler |
+| :--- | :--- | :--- | :--- |
+| **GET** | `/api/v1/users` | `frontend/UserList.vue:15` | `backend/UserController.java:28` |
+| **POST** | `/api/v1/orders` | `frontend/OrderView.ts:42` | `backend/order_service.py:55` |
 ```
 
 ---
