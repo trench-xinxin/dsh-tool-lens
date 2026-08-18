@@ -128,6 +128,7 @@ const LENS_OUTPUT_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
+        additionalProperties: false,
         properties: {
           cycle: { type: 'array', items: { type: 'string' } },
           length: { type: 'integer' },
@@ -136,18 +137,26 @@ const LENS_OUTPUT_SCHEMA = {
     },
     metrics: {
       type: 'object',
+      additionalProperties: true,
     },
     impactTiers: {
       type: 'object',
+      additionalProperties: true,
     },
     pathfinding: {
       type: 'object',
+      additionalProperties: true,
     },
     deadCode: {
       type: 'object',
+      additionalProperties: true,
     },
     architectureViolations: {
       type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+      },
     },
   },
 } as const

@@ -4,6 +4,14 @@
 
 ---
 
+## [1.3.5] - 2026-08-18
+
+### 🩹 JSON Schema 规范兼容与端口自动避让 (Fixes)
+- 修复 `JsonSchemaError: additionalProperties must be explicitly true or false` 错误：在 `LENS_OUTPUT_SCHEMA` 的所有 `type: 'object'` 声明中显式补充 `additionalProperties`；
+- 增加 CLI **智能端口自适应检测**：若 3080 端口已被占用，自动探测并重路由至下一个空闲端口（如 3081、3082...），彻底告别 `EADDRINUSE` 端口冲突错误。
+
+---
+
 ## [1.3.4] - 2026-08-18
 
 ### 🩹 补齐运行时 dependencies 声明 (Fixes)
