@@ -4,6 +4,13 @@
 
 ---
 
+## [2.0.4] - 2026-08-18
+
+### 🩹 强力拦截大模型误用 Python 语法导致语法错误 (Fixes)
+- 在系统提示词中显式注入 **“Code Mode 沙箱仅支持 JavaScript/TypeScript 环境，严禁使用 Python 语法（`import os`, `print` 等）”**，强力约束大模型直接调用 `return await tools.lens(...)`。
+
+---
+
 ## [2.0.3] - 2026-08-18
 
 ### 🌟 顶级系统意图自动映射与零指令智能唤醒 (UX Improvements)
