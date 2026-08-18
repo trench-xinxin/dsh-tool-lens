@@ -1,5 +1,6 @@
 /**
  * Extensible Language Driver registry for multi-ecosystem AST analysis.
+ * Supports TypeScript, JavaScript, Vue, Svelte, Python, Go, and Rust.
  * @module @trench-xinxin/dsh-tool-lens/parsers/driver
  */
 
@@ -26,13 +27,43 @@ export class SFCLanguageDriver implements LanguageDriver {
   }
 }
 
+export class PythonLanguageDriver implements LanguageDriver {
+  readonly name = 'python'
+  readonly extensions = ['.py'] as const
+
+  canHandle(filePath: string): boolean {
+    return filePath.toLowerCase().endsWith('.py')
+  }
+}
+
+export class GoLanguageDriver implements LanguageDriver {
+  readonly name = 'go'
+  readonly extensions = ['.go'] as const
+
+  canHandle(filePath: string): boolean {
+    return filePath.toLowerCase().endsWith('.go')
+  }
+}
+
+export class RustLanguageDriver implements LanguageDriver {
+  readonly name = 'rust'
+  readonly extensions = ['.rs'] as const
+
+  canHandle(filePath: string): boolean {
+    return filePath.toLowerCase().endsWith('.rs')
+  }
+}
+
 export class DriverRegistry {
   private readonly drivers: LanguageDriver[] = []
 
   constructor() {
-    // Register default drivers
+    // Register all ecosystem drivers
     this.register(new TSLanguageDriver())
     this.register(new SFCLanguageDriver())
+    this.register(new PythonLanguageDriver())
+    this.register(new GoLanguageDriver())
+    this.register(new RustLanguageDriver())
   }
 
   register(driver: LanguageDriver): void {

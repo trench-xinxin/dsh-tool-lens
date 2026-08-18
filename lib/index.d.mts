@@ -255,34 +255,34 @@ declare class IncrementalCacheStore {
 //#endregion
 //#region src/parsers/config-parser.d.ts
 /**
- * tsconfig.json and jsconfig.json path alias resolver for TypeScript projects.
+ * tsconfig.json, pyproject.toml, go.mod, and Cargo.toml path mapping & module resolver.
  * @module @trench-xinxin/dsh-tool-lens/parsers/config-parser
  */
 declare const SUPPORTED_EXTENSIONS: string[];
 interface PathMappingRule {
   pattern: RegExp;
+  prefix: string;
   targets: string[];
 }
-/**
- * Parses tsconfig.json / jsconfig.json to extract baseUrl and path alias mappings.
- */
 declare class ConfigParser {
-  private baseUrl;
-  private readonly mappings;
+  private readonly rootDir;
+  private readonly baseUrl;
+  private readonly pathRules;
+  private goModuleName?;
+  private rustCrateName?;
   constructor(rootDir: string);
-  /** Load and parse tsconfig.json or jsconfig.json in the specified root directory. */
-  private loadConfig;
-  /**
-   * Resolves a module specifier against path mappings.
-   * @param specifier - e.g. "@/components/Button" or "@utils"
-   * @param rootDir - Workspace root directory
-   */
-  resolveAlias(specifier: string, rootDir: string): string[];
+  private loadTsConfig;
+  private loadGoMod;
+  private loadCargoToml;
+  getGoModuleName(): string | undefined;
+  getRustCrateName(): string | undefined;
+  resolveAlias(specifier: string): string[];
 }
 /**
- * Resolves a module specifier (relative or path alias) to a workspace relative file path.
+ * Resolves a module specifier to a relative file path in the workspace.
+ * Supports TypeScript, Vue, Svelte, Python, Go, and Rust.
  */
-declare function resolveModulePath(currentRelPath: string, importPath: string, rootDir: string, configParser?: ConfigParser, knownFiles?: Iterable<string>): string | null;
+declare function resolveModulePath(currentRelPath: string, moduleSpecifier: string, rootDir: string, configParser?: ConfigParser, knownFiles?: Iterable<string>): string | null;
 //#endregion
 //#region src/parsers/sfc-parser.d.ts
 /**
@@ -310,6 +310,53 @@ declare function kebabToPascal(str: string): string;
  */
 declare function extractSFCBlocks(content: string, filePath: string): SFCExtractionResult;
 //#endregion
+//#region src/parsers/python-parser.d.ts
+interface ParsedSymbolDef {
+  name: string;
+  kind: CodeNodeKind;
+  line: number;
+  endLine: number;
+  parentName?: string;
+}
+interface ParsedHeritageDef {
+  sourceName: string;
+  targetName: string;
+  relation: 'extends' | 'implements';
+}
+interface ParsedImportDef {
+  specifier: string;
+  importedName: string;
+  localName: string;
+  isNamespace?: boolean;
+}
+interface ParsedCallDef {
+  callerName: string;
+  calleeName: string;
+  calleeObject?: string;
+}
+interface ParsedSourceResult {
+  symbols: ParsedSymbolDef[];
+  imports: ParsedImportDef[];
+  heritages: ParsedHeritageDef[];
+  calls: ParsedCallDef[];
+}
+/**
+ * Parses Python source code into symbols, imports, heritages, and calls.
+ */
+declare function parsePythonSource(content: string, _relPath: string): ParsedSourceResult;
+//#endregion
+//#region src/parsers/go-parser.d.ts
+/**
+ * Parses Go source code into symbols, imports, heritages, and calls.
+ */
+declare function parseGoSource(content: string, _relPath: string): ParsedSourceResult;
+//#endregion
+//#region src/parsers/rust-parser.d.ts
+/**
+ * Parses Rust source code into symbols, imports, heritages, and calls.
+ */
+declare function parseRustSource(content: string, _relPath: string): ParsedSourceResult;
+//#endregion
 //#region src/parsers/driver.d.ts
 declare class TSLanguageDriver implements LanguageDriver {
   readonly name = "typescript";
@@ -319,6 +366,21 @@ declare class TSLanguageDriver implements LanguageDriver {
 declare class SFCLanguageDriver implements LanguageDriver {
   readonly name = "sfc";
   readonly extensions: readonly [".vue", ".svelte"];
+  canHandle(filePath: string): boolean;
+}
+declare class PythonLanguageDriver implements LanguageDriver {
+  readonly name = "python";
+  readonly extensions: readonly [".py"];
+  canHandle(filePath: string): boolean;
+}
+declare class GoLanguageDriver implements LanguageDriver {
+  readonly name = "go";
+  readonly extensions: readonly [".go"];
+  canHandle(filePath: string): boolean;
+}
+declare class RustLanguageDriver implements LanguageDriver {
+  readonly name = "rust";
+  readonly extensions: readonly [".rs"];
   canHandle(filePath: string): boolean;
 }
 declare class DriverRegistry {
@@ -332,7 +394,7 @@ declare class DriverRegistry {
 //#region src/parsers/ts-parser.d.ts
 /**
  * Parses files in a workspace into an AST and populates a GraphStore
- * with file, component, symbol, import, extends, implements, and scope-aware call hierarchy relations.
+ * across TypeScript, JavaScript, Vue SFC, Svelte, Python, Go, and Rust codebases.
  */
 declare class TSParser {
   private readonly graph;
@@ -367,13 +429,18 @@ declare class TSParser {
    */
   invalidateAndReloadFile(relPath: string, rootDir: string): void;
   /**
-   * Analyzes single file or SFC component content and registers symbols and relations into the graph.
-   * @param relPath - Relative path of the file from workspace root.
-   * @param content - File text content.
-   * @param rootDir - Workspace root directory.
-   * @param autoLink - Whether to resolve calls and heritages immediately.
+   * Analyzes single file content and registers symbols and relations into the graph.
+   * Supports TypeScript, JavaScript, Vue SFC, Svelte, Python, Go, and Rust.
    */
   analyzeSourceCode(relPath: string, content: string, rootDir: string, autoLink?: boolean): void;
+  /**
+   * Common handler for non-TypeScript ecosystem languages (Python, Go, Rust).
+   */
+  private analyzeGenericParsedResult;
+  /**
+   * Dedicated TypeScript, JavaScript, Vue SFC, and Svelte AST analysis.
+   */
+  private analyzeTsAndSfcSourceCode;
   /** Restores memory state and GraphStore from a cached file entry. */
   private restoreFromCache;
   private removeFileFromMemoryIndex;
@@ -562,4 +629,4 @@ declare const Config: Schema<Config>;
  */
 declare function apply(ctx: Context, config?: Config): void;
 //#endregion
-export { CacheSnapshot, CircularAnalysisResult, CircularCycle, CodeAnalyzer, CodeEdgeRelation, CodeGraphAction, CodeGraphEdge, CodeGraphNode, CodeGraphResult, CodeNodeKind, Config, ConfigParser, DriverRegistry, FileDeltaStatus, FileIndexCache, GraphStore, ImpactAnalysisResult, ImpactTiers, IncrementalCacheStore, IncrementalIndexStats, LENS_PROMPT_TEXT, LanguageDriver, LensArgs, LensWatcher, ModuleMetric, PathMappingRule, ProjectMetrics, SFCExtractionResult, SFCLanguageDriver, SUPPORTED_EXTENSIONS, TSLanguageDriver, TSParser, TopHub, WatcherOptions, analyzeCircularDependencies, analyzeImpact, analyzeProjectMetrics, apply, buildCircularResult, buildMetricsResult, extractSFCBlocks, formatGraphMarkdown, generateMermaidDiagram, inject, kebabToPascal, name, presentLensCall, presentLensResult, resolveModulePath };
+export { CacheSnapshot, CircularAnalysisResult, CircularCycle, CodeAnalyzer, CodeEdgeRelation, CodeGraphAction, CodeGraphEdge, CodeGraphNode, CodeGraphResult, CodeNodeKind, Config, ConfigParser, DriverRegistry, FileDeltaStatus, FileIndexCache, GoLanguageDriver, GraphStore, ImpactAnalysisResult, ImpactTiers, IncrementalCacheStore, IncrementalIndexStats, LENS_PROMPT_TEXT, LanguageDriver, LensArgs, LensWatcher, ModuleMetric, ParsedCallDef, ParsedHeritageDef, ParsedImportDef, ParsedSourceResult, ParsedSymbolDef, PathMappingRule, ProjectMetrics, PythonLanguageDriver, RustLanguageDriver, SFCExtractionResult, SFCLanguageDriver, SUPPORTED_EXTENSIONS, TSLanguageDriver, TSParser, TopHub, WatcherOptions, analyzeCircularDependencies, analyzeImpact, analyzeProjectMetrics, apply, buildCircularResult, buildMetricsResult, extractSFCBlocks, formatGraphMarkdown, generateMermaidDiagram, inject, kebabToPascal, name, parseGoSource, parsePythonSource, parseRustSource, presentLensCall, presentLensResult, resolveModulePath };

@@ -4,6 +4,32 @@
 
 ---
 
+## [1.1.0] - 2026-08-18
+
+### 🌍 多语言生态驱动发布：Python / Go / Rust AST 接入 (Phase 5)
+
+#### ✨ 新增特性 (Features)
+- **Python 语言 AST 驱动 (`.py`)**:
+  - 支持 `import mod`、`from mod import item` 与相对点分导入（`.utils`、`..core`）；
+  - 支持 `def`、`async def` 全局函数提取；
+  - 支持 `class Cls(Base):` 类定义、多重继承（`relation: 'extends'`）及类方法/实例方法 `Cls.method` 提取；
+  - 自动解析 `self.method()`、`pkg.func()` 调用链。
+- **Go 语言 AST 驱动 (`.go`)**:
+  - 支持 `package` 包作用域与 `go.mod` 模块路径映射（`import "my-app/pkg/db"`）；
+  - 支持 `type Struct struct`（`class`）与 `type Interface interface`（`interface`）；
+  - 支持 Struct Embedding 组合继承与 Receiver 成员方法 `func (r *T) Method()`（挂载至所属结构体）；
+  - 支持跨包与包内函数调用消歧。
+- **Rust 语言 AST 驱动 (`.rs`)**:
+  - 支持 `Cargo.toml` 工作区与 `use crate::path::item;` / `mod foo;` 模块树解析；
+  - 支持 `struct`、`enum`、`trait` 提取；
+  - 支持 `impl Trait for Struct` 特质实现（`relation: 'implements'`）与 `impl Struct` 关联方法提取；
+  - 支持 `Type::assoc_fn()`、`self.method()` 关联调用。
+- **全栈混合多语言 Monorepo 支持**:
+  - 支持同一个工作区内前端（TS / Vue / Svelte）与后端（Python / Go / Rust）统一建图；
+  - 高级 Action（`circular` 循环依赖审计、`metrics` 架构健康度、`impact` 爆炸半径）全语言天然通用。
+
+---
+
 ## [1.0.0] - 2026-08-18
 
 ### 🎉 全栈里程碑发布：前端 SFC 组件与多语言驱动层 (Phase 4)

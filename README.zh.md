@@ -51,10 +51,11 @@ npx @trench-xinxin/dsh-tool-lens "使用 lens 工具审计项目中的循环依�
    - 基于 Tarjan 强连通分量与 DFS 染色算法，一键检测所有闭合环路（如 `A -> B -> C -> A`）。
    - 输出环路链路与受波及文件清单，规避运行时初始化死锁与内存泄露。
 
-5. **🧩 前端单文件组件与全生态驱动 (`vue & svelte SFC`)**
-   - **Vue 3 SFC (`.vue`)**：支持 `<script setup lang="ts">` 与普通 `<script>` 符号提取，自动分析 `<template>` 中的子组件标签并建立组件依赖图。
-   - **Svelte (`.svelte`)**：支持 `<script>` 逻辑与模板组件关联。
-   - **LanguageDriver 抽象**：插件化驱动架构，解耦语法提取与图谱存储。
+5. **🌍 多语言生态驱动全景支持 (`Python / Go / Rust / TS / SFC`)**
+   - **Python (`.py`)**：支持 `def`、`class` 继承、`self.method()` 及相对/绝对包导入分析。
+   - **Go (`.go`)**：支持 `package` 作用域、`go.mod` 模块路径、Struct Embedding 与 Receiver 成员方法。
+   - **Rust (`.rs`)**：支持 `mod` 树、`Cargo.toml`、`trait` 定义、`impl Trait for Struct` 特质实现与关联方法。
+   - **前端 SFC**：支持 Vue 3 SFC (`.vue`) 与 Svelte (`.svelte`)。
 
 6. **⚡ 毫秒级增量缓存与实时 Watch 模式 (`incremental & watch`)**
    - 基于 `mtime` 与 `SHA-256` 内容哈希，二次查询未修改文件 100% 命中缓存，实现毫秒级响应（< 20ms）。

@@ -161,8 +161,8 @@ export class GraphStore {
         continue
       }
 
-      // 3. File path suffix match on file nodes
-      if (node.kind === 'file' && (nodePath.endsWith(`/${normalized}`) || nodePath === normalized)) {
+      // 3. File path suffix match on file/component nodes
+      if ((node.kind === 'file' || node.kind === 'component') && (nodePath.endsWith(`/${normalized}`) || nodePath === normalized)) {
         fileSuffixMatches.push(node)
         continue
       }
@@ -355,7 +355,9 @@ export class GraphStore {
    * Computes architecture coupling metrics (Ca, Ce, Instability) and Top Hubs.
    */
   calculateMetrics(): ProjectMetrics {
-    const fileNodes = Array.from(this.nodes.values()).filter((n) => n.kind === 'file')
+    const fileNodes = Array.from(this.nodes.values()).filter(
+      (n) => n.kind === 'file' || n.kind === 'component',
+    )
     const fileMap = new Map<string, CodeGraphNode>()
     for (const f of fileNodes) {
       fileMap.set(f.id, f)

@@ -1,207 +1,369 @@
 /**
- * tsconfig.json and jsconfig.json path alias resolver for TypeScript projects.
+ * tsconfig.json, pyproject.toml, go.mod, and Cargo.toml path mapping & module resolver.
  * @module @trench-xinxin/dsh-tool-lens/parsers/config-parser
  */
 
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, normalize, relative, resolve } from 'node:path'
 
-export const SUPPORTED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.vue', '.svelte']
+export const SUPPORTED_EXTENSIONS = [
+  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+  '.vue', '.svelte',
+  '.py',
+  '.go',
+  '.rs',
+]
 
 export interface PathMappingRule {
   pattern: RegExp
+  prefix: string
   targets: string[]
 }
 
-/**
- * Parses tsconfig.json / jsconfig.json to extract baseUrl and path alias mappings.
- */
 export class ConfigParser {
-  private baseUrl: string = '.'
-  private readonly mappings: PathMappingRule[] = []
+  private readonly baseUrl: string
+  private readonly pathRules: PathMappingRule[] = []
+  private goModuleName?: string
+  private rustCrateName?: string
 
-  constructor(rootDir: string) {
-    this.loadConfig(rootDir)
+  constructor(private readonly rootDir: string) {
+    this.baseUrl = rootDir
+    this.loadTsConfig()
+    this.loadGoMod()
+    this.loadCargoToml()
   }
 
-  /** Load and parse tsconfig.json or jsconfig.json in the specified root directory. */
-  private loadConfig(rootDir: string): void {
-    const candidates = ['tsconfig.json', 'jsconfig.json']
-    let configPath: string | null = null
-
-    for (const candidate of candidates) {
-      const fullPath = join(rootDir, candidate)
-      if (existsSync(fullPath)) {
-        configPath = fullPath
-        break
-      }
-    }
+  private loadTsConfig(): void {
+    const tsconfigPath = join(this.rootDir, 'tsconfig.json')
+    const jsconfigPath = join(this.rootDir, 'jsconfig.json')
+    const configPath = existsSync(tsconfigPath)
+      ? tsconfigPath
+      : existsSync(jsconfigPath)
+        ? jsconfigPath
+        : null
 
     if (!configPath) return
 
     try {
-      const content = readFileSync(configPath, 'utf8')
-      // Strip comments (simple regex for JSON with comments)
-      const cleanJson = content.replace(/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/gm, '$1')
-      const parsed = JSON.parse(cleanJson)
-      const compilerOptions = parsed.compilerOptions || {}
+      const rawContent = readFileSync(configPath, 'utf8')
+      const sanitized = rawContent.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '')
+      const parsed = JSON.parse(sanitized)
+      const opts = parsed.compilerOptions
 
-      this.baseUrl = compilerOptions.baseUrl ? join(rootDir, compilerOptions.baseUrl) : rootDir
+      if (!opts) return
 
-      if (compilerOptions.paths && typeof compilerOptions.paths === 'object') {
-        for (const [key, rawTargets] of Object.entries(compilerOptions.paths)) {
-          const targets = Array.isArray(rawTargets) ? (rawTargets as string[]) : []
+      const base = opts.baseUrl ? resolve(this.rootDir, opts.baseUrl) : this.rootDir
+
+      if (opts.paths && typeof opts.paths === 'object') {
+        for (const [key, rawTargets] of Object.entries(opts.paths)) {
+          const targets = Array.isArray(rawTargets)
+            ? rawTargets.map((t) => resolve(base, t))
+            : [resolve(base, String(rawTargets))]
+
           if (key.includes('*')) {
-            // Wildcard pattern: e.g. "@/*" -> "^@/(.*)$"
-            const escaped = key.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace('*', '(.*)')
-            this.mappings.push({
-              pattern: new RegExp(`^${escaped}$`),
-              targets,
-            })
+            const prefix = key.slice(0, key.indexOf('*'))
+            const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            const pattern = new RegExp(`^${escaped}(.*)$`)
+            this.pathRules.push({ pattern, prefix, targets })
           } else {
-            // Exact alias: e.g. "@utils" -> "^@utils$"
-            const escaped = key.replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-            this.mappings.push({
-              pattern: new RegExp(`^${escaped}$`),
-              targets,
-            })
+            const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            const pattern = new RegExp(`^${escaped}$`)
+            this.pathRules.push({ pattern, prefix: key, targets })
           }
         }
       }
     } catch {
-      // Gracefully ignore parse errors
+      // Gracefully ignore malformed tsconfig
     }
   }
 
-  /**
-   * Resolves a module specifier against path mappings.
-   * @param specifier - e.g. "@/components/Button" or "@utils"
-   * @param rootDir - Workspace root directory
-   */
-  resolveAlias(specifier: string, rootDir: string): string[] {
-    const candidates: string[] = []
+  private loadGoMod(): void {
+    const goModPath = join(this.rootDir, 'go.mod')
+    if (existsSync(goModPath)) {
+      try {
+        const content = readFileSync(goModPath, 'utf8')
+        const match = content.match(/^module\s+([^\s\r\n]+)/m)
+        if (match) {
+          this.goModuleName = match[1]
+        }
+      } catch {}
+    }
+  }
 
-    for (const rule of this.mappings) {
+  private loadCargoToml(): void {
+    const cargoPath = join(this.rootDir, 'Cargo.toml')
+    if (existsSync(cargoPath)) {
+      try {
+        const content = readFileSync(cargoPath, 'utf8')
+        const match = content.match(/\[package\][\s\S]*?name\s*=\s*"([^"]+)"/)
+        if (match) {
+          this.rustCrateName = match[1]
+        }
+      } catch {}
+    }
+  }
+
+  getGoModuleName(): string | undefined {
+    return this.goModuleName
+  }
+
+  getRustCrateName(): string | undefined {
+    return this.rustCrateName
+  }
+
+  resolveAlias(specifier: string): string[] {
+    for (const rule of this.pathRules) {
       const match = specifier.match(rule.pattern)
       if (match) {
-        const starCapture = match[1] ?? ''
-        for (const target of rule.targets) {
-          const replaced = target.replace('*', starCapture)
-          const targetAbs = resolve(this.baseUrl, replaced)
-          candidates.push(targetAbs)
-        }
+        const wildcard = match[1] ?? ''
+        return rule.targets.map((target) => target.replace('*', wildcard))
       }
     }
-
-    return candidates
+    return []
   }
 }
 
 /**
- * Resolves a module specifier (relative or path alias) to a workspace relative file path.
+ * Resolves a module specifier to a relative file path in the workspace.
+ * Supports TypeScript, Vue, Svelte, Python, Go, and Rust.
  */
 export function resolveModulePath(
   currentRelPath: string,
-  importPath: string,
+  moduleSpecifier: string,
   rootDir: string,
   configParser?: ConfigParser,
   knownFiles?: Iterable<string>,
 ): string | null {
+  if (!moduleSpecifier) return null
+
   const currentDir = dirname(join(rootDir, currentRelPath))
 
-  // 1. Try Relative Path
-  if (importPath.startsWith('.')) {
-    const targetBase = resolve(currentDir, importPath)
-
-    // 1.1 Match known files in memory
-    if (knownFiles) {
-      for (const known of knownFiles) {
-        const knownAbs = resolve(rootDir, known)
-        if (knownAbs === targetBase) {
-          return normalize(known)
-        }
-        for (const ext of SUPPORTED_EXTENSIONS) {
-          if (knownAbs === targetBase + ext || knownAbs === join(targetBase, 'index' + ext)) {
-            return normalize(known)
-          }
-        }
-      }
-    }
-
-    // 1.2 Probe file on physical disk
-    const match = probeFile(targetBase)
-    if (match) {
-      return normalize(relative(rootDir, match))
-    }
-
-    // 1.3 Pure relative normalization fallback
-    const computedRel = normalize(relative(rootDir, targetBase))
-    return computedRel
+  // 1. Python dot import (e.g. from .utils import x, from ..core import y)
+  if (currentRelPath.endsWith('.py')) {
+    const pyResolved = resolvePythonModulePath(currentRelPath, moduleSpecifier, rootDir, knownFiles)
+    if (pyResolved) return pyResolved
   }
 
-  // 2. Try Path Mapping / Aliases
+  // 2. Go module import (e.g. import "my-module/pkg/db")
+  if (currentRelPath.endsWith('.go')) {
+    if (configParser?.getGoModuleName()) {
+      const goMod = configParser.getGoModuleName()!
+      if (moduleSpecifier.startsWith(goMod)) {
+        const subPath = moduleSpecifier.slice(goMod.length).replace(/^\/+/, '')
+        const candidateDir = join(rootDir, subPath)
+        if (existsSync(candidateDir)) {
+          return normalize(relative(rootDir, candidateDir))
+        }
+        return normalize(subPath)
+      }
+    }
+    // Non-module or mock pkg/db
+    if (knownFiles) {
+      for (const known of knownFiles) {
+        if (known.includes(moduleSpecifier)) {
+          return known
+        }
+      }
+    }
+  }
+
+  // 3. Rust crate:: or super:: / self:: import
+  if (currentRelPath.endsWith('.rs')) {
+    const rustResolved = resolveRustModulePath(currentRelPath, moduleSpecifier, rootDir, knownFiles)
+    if (rustResolved) return rustResolved
+  }
+
+  // 4. Relative paths (./ or ../)
+  if (moduleSpecifier.startsWith('./') || moduleSpecifier.startsWith('../')) {
+    const rawTarget = resolve(currentDir, moduleSpecifier)
+    const exact = probeFileVariants(rawTarget)
+    if (exact) {
+      return normalize(relative(rootDir, exact))
+    }
+
+    const candidateRel = normalize(relative(rootDir, rawTarget))
+    if (knownFiles) {
+      for (const known of knownFiles) {
+        if (known === candidateRel) return known
+      }
+      for (const ext of SUPPORTED_EXTENSIONS) {
+        const withExt = `${candidateRel}${ext}`
+        for (const known of knownFiles) {
+          if (known === withExt) return known
+        }
+      }
+    }
+
+    for (const ext of SUPPORTED_EXTENSIONS) {
+      if (candidateRel.endsWith(ext)) {
+        return candidateRel
+      }
+    }
+  }
+
+  // 5. tsconfig / jsconfig paths alias matching
   if (configParser) {
-    const aliasCandidates = configParser.resolveAlias(importPath, rootDir)
-    for (const candidate of aliasCandidates) {
+    const candidatePaths = configParser.resolveAlias(moduleSpecifier)
+    for (const cand of candidatePaths) {
+      const exact = probeFileVariants(cand)
+      if (exact) {
+        return normalize(relative(rootDir, exact))
+      }
+      const candidateRel = normalize(relative(rootDir, cand))
       if (knownFiles) {
         for (const known of knownFiles) {
-          const knownAbs = resolve(rootDir, known)
-          if (knownAbs === candidate) {
-            return normalize(known)
-          }
-          for (const ext of SUPPORTED_EXTENSIONS) {
-            if (knownAbs === candidate + ext || knownAbs === join(candidate, 'index' + ext)) {
-              return normalize(known)
-            }
+          if (known === candidateRel) return known
+        }
+        for (const ext of SUPPORTED_EXTENSIONS) {
+          const withExt = `${candidateRel}${ext}`
+          for (const known of knownFiles) {
+            if (known === withExt) return known
           }
         }
       }
+    }
+  }
 
-      const match = probeFile(candidate)
-      if (match) {
-        return normalize(relative(rootDir, match))
+  // 6. Root-relative or known files matching
+  if (knownFiles) {
+    for (const ext of SUPPORTED_EXTENSIONS) {
+      const candidate = `${moduleSpecifier}${ext}`
+      for (const known of knownFiles) {
+        if (known === candidate || known.endsWith(`/${candidate}`) || known.endsWith(`/${moduleSpecifier}`)) {
+          return known
+        }
       }
-
-      const computedRel = normalize(relative(rootDir, candidate))
-      return computedRel
     }
   }
 
   return null
 }
 
-/** Probe for file existence with supported extensions and index file fallbacks. */
-function probeFile(basePath: string): string | null {
-  // Direct file check (if extension was explicitly provided)
-  if (existsSync(basePath)) {
-    try {
-      if (statSync(basePath).isFile()) {
-        return basePath
+function resolvePythonModulePath(
+  currentRelPath: string,
+  specifier: string,
+  rootDir: string,
+  knownFiles?: Iterable<string>,
+): string | null {
+  const currentDir = dirname(join(rootDir, currentRelPath))
+
+  // Relative import (leading dots)
+  if (specifier.startsWith('.')) {
+    let dotCount = 0
+    while (specifier.charAt(dotCount) === '.') {
+      dotCount++
+    }
+    const remainder = specifier.slice(dotCount).replace(/\./g, '/')
+    let targetBaseDir = currentDir
+    for (let i = 1; i < dotCount; i++) {
+      targetBaseDir = dirname(targetBaseDir)
+    }
+
+    const candidatePath = remainder ? join(targetBaseDir, remainder) : targetBaseDir
+    const exact = probeFileVariants(candidatePath, ['.py'])
+    if (exact) return normalize(relative(rootDir, exact))
+
+    const candidateRel = normalize(relative(rootDir, candidatePath))
+    if (knownFiles) {
+      for (const known of knownFiles) {
+        if (known === candidateRel || known === `${candidateRel}.py`) return known
       }
-    } catch {}
+    }
+    return candidateRel.endsWith('.py') ? candidateRel : `${candidateRel}.py`
   }
 
-  // Probe with extension
-  for (const ext of SUPPORTED_EXTENSIONS) {
-    const candidate = basePath + ext
-    if (existsSync(candidate)) {
-      try {
-        if (statSync(candidate).isFile()) {
-          return candidate
-        }
-      } catch {}
+  // Absolute dot-delimited import (e.g. services.user_service)
+  const relFromRoot = specifier.replace(/\./g, '/')
+  const candidateFromRoot = join(rootDir, relFromRoot)
+  const exactRoot = probeFileVariants(candidateFromRoot, ['.py'])
+  if (exactRoot) return normalize(relative(rootDir, exactRoot))
+
+  if (knownFiles) {
+    for (const known of knownFiles) {
+      if (known === relFromRoot || known === `${relFromRoot}.py`) return known
     }
   }
 
-  // Probe with directory index
-  for (const ext of SUPPORTED_EXTENSIONS) {
-    const indexCandidate = join(basePath, 'index' + ext)
-    if (existsSync(indexCandidate)) {
-      try {
-        if (statSync(indexCandidate).isFile()) {
-          return indexCandidate
+  return `${relFromRoot}.py`
+}
+
+function resolveRustModulePath(
+  currentRelPath: string,
+  specifier: string,
+  rootDir: string,
+  knownFiles?: Iterable<string>,
+): string | null {
+  const cleanSpec = specifier.replace(/^crate::/, '').replace(/^self::/, '')
+  const relPathSegments = cleanSpec.split('::')
+
+  // Check prefix segments against known files
+  for (let i = relPathSegments.length; i >= 1; i--) {
+    const subSegments = relPathSegments.slice(0, i)
+    const filePath = subSegments.join('/')
+
+    // Look in src/
+    const candidateInSrc = join(rootDir, 'src', filePath)
+    const exactSrc = probeFileVariants(candidateInSrc, ['.rs'])
+    if (exactSrc) return normalize(relative(rootDir, exactSrc))
+
+    const candidateRelSrc = normalize(`src/${filePath}.rs`)
+    if (knownFiles) {
+      for (const known of knownFiles) {
+        if (known === candidateRelSrc) return known
+      }
+    }
+
+    // Look directly under rootDir
+    const candidateRoot = join(rootDir, filePath)
+    const exactRoot = probeFileVariants(candidateRoot, ['.rs'])
+    if (exactRoot) return normalize(relative(rootDir, exactRoot))
+
+    const candidateRelRoot = normalize(`${filePath}.rs`)
+    if (knownFiles) {
+      for (const known of knownFiles) {
+        if (known === candidateRelRoot) return known
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Checks for direct file existence, file with extensions, or index files in a folder.
+ */
+function probeFileVariants(basePath: string, customExtensions?: string[]): string | null {
+  const extensions = customExtensions ?? SUPPORTED_EXTENSIONS
+
+  // Exact match
+  if (existsSync(basePath)) {
+    const stat = statSync(basePath)
+    if (stat.isFile()) return basePath
+    if (stat.isDirectory()) {
+      for (const ext of extensions) {
+        const indexFile = join(basePath, `index${ext}`)
+        if (existsSync(indexFile) && statSync(indexFile).isFile()) {
+          return indexFile
         }
-      } catch {}
+        // Python __init__.py
+        const pyInit = join(basePath, `__init__.py`)
+        if (existsSync(pyInit) && statSync(pyInit).isFile()) {
+          return pyInit
+        }
+        // Rust mod.rs
+        const rustMod = join(basePath, `mod.rs`)
+        if (existsSync(rustMod) && statSync(rustMod).isFile()) {
+          return rustMod
+        }
+      }
+    }
+  }
+
+  // Appending extensions
+  for (const ext of extensions) {
+    const candidate = `${basePath}${ext}`
+    if (existsSync(candidate) && statSync(candidate).isFile()) {
+      return candidate
     }
   }
 

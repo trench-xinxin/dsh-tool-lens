@@ -1,7 +1,7 @@
 /**
- * AST extraction and symbol analysis engine for TypeScript, JavaScript, Vue SFC, and Svelte.
- * Handles Re-exports, OOP extends/implements heritage, Scope-Aware call resolution,
- * SFC template components, and high-performance incremental caching.
+ * Unified multi-ecosystem AST extraction and symbol analysis engine.
+ * Supports TypeScript, JavaScript, Vue SFC, Svelte, Python, Go, and Rust.
+ * Handles Re-exports, OOP heritage, 4-Tier scope-aware calls, and incremental caching.
  * @module @trench-xinxin/dsh-tool-lens/parsers/ts-parser
  */
 
@@ -19,9 +19,16 @@ import type {
 } from '../core/types.ts'
 import { ConfigParser, resolveModulePath, SUPPORTED_EXTENSIONS } from './config-parser.ts'
 import { DriverRegistry } from './driver.ts'
+import { parseGoSource } from './go-parser.ts'
+import type { ParsedSourceResult } from './python-parser.ts'
+import { parsePythonSource } from './python-parser.ts'
+import { parseRustSource } from './rust-parser.ts'
 import { extractSFCBlocks } from './sfc-parser.ts'
 
-const IGNORED_DIRECTORIES = new Set(['node_modules', '.git', 'dist', 'lib', 'build', '.dsh', 'coverage'])
+const IGNORED_DIRECTORIES = new Set([
+  'node_modules', '.git', 'dist', 'lib', 'build', '.dsh', 'coverage',
+  '__pycache__', '.pytest_cache', '.venv', 'venv', 'target', 'vendor',
+])
 
 interface ImportBinding {
   importedName: string
@@ -46,7 +53,7 @@ interface PendingHeritage {
 
 /**
  * Parses files in a workspace into an AST and populates a GraphStore
- * with file, component, symbol, import, extends, implements, and scope-aware call hierarchy relations.
+ * across TypeScript, JavaScript, Vue SFC, Svelte, Python, Go, and Rust codebases.
  */
 export class TSParser {
   private readonly graph: GraphStore
@@ -145,7 +152,7 @@ export class TSParser {
       }
     }
 
-    // 3. Link cross-file dependencies and calls
+    // 3. Link cross-file dependencies, calls, and heritages
     this.linkAllCalls()
     this.linkAllHeritages()
 
@@ -184,17 +191,215 @@ export class TSParser {
   }
 
   /**
-   * Analyzes single file or SFC component content and registers symbols and relations into the graph.
-   * @param relPath - Relative path of the file from workspace root.
-   * @param content - File text content.
-   * @param rootDir - Workspace root directory.
-   * @param autoLink - Whether to resolve calls and heritages immediately.
+   * Analyzes single file content and registers symbols and relations into the graph.
+   * Supports TypeScript, JavaScript, Vue SFC, Svelte, Python, Go, and Rust.
    */
   analyzeSourceCode(relPath: string, content: string, rootDir: string, autoLink = true): void {
     if (!this.configParser) {
       this.configParser = new ConfigParser(rootDir)
     }
 
+    if (relPath.endsWith('.py')) {
+      this.analyzeGenericParsedResult(relPath, content, rootDir, parsePythonSource(content, relPath), autoLink)
+      return
+    }
+
+    if (relPath.endsWith('.go')) {
+      this.analyzeGenericParsedResult(relPath, content, rootDir, parseGoSource(content, relPath), autoLink)
+      return
+    }
+
+    if (relPath.endsWith('.rs')) {
+      this.analyzeGenericParsedResult(relPath, content, rootDir, parseRustSource(content, relPath), autoLink)
+      return
+    }
+
+    this.analyzeTsAndSfcSourceCode(relPath, content, rootDir, autoLink)
+  }
+
+  /**
+   * Common handler for non-TypeScript ecosystem languages (Python, Go, Rust).
+   */
+  private analyzeGenericParsedResult(
+    relPath: string,
+    content: string,
+    rootDir: string,
+    parsed: ParsedSourceResult,
+    autoLink: boolean,
+  ): void {
+    const fileNodeId = relPath
+    const fileNode: CodeGraphNode = {
+      id: fileNodeId,
+      name: relPath,
+      kind: 'file',
+      filePath: relPath,
+    }
+    this.graph.addNode(fileNode)
+
+    let symbolsInFile = this.fileSymbols.get(relPath)
+    if (!symbolsInFile) {
+      symbolsInFile = new Map<string, CodeGraphNode>()
+      this.fileSymbols.set(relPath, symbolsInFile)
+    }
+
+    let importsInFile = this.fileImports.get(relPath)
+    if (!importsInFile) {
+      importsInFile = new Set<string>()
+      this.fileImports.set(relPath, importsInFile)
+    }
+
+    let bindingsInFile = this.fileBindings.get(relPath)
+    if (!bindingsInFile) {
+      bindingsInFile = new Map<string, ImportBinding>()
+      this.fileBindings.set(relPath, bindingsInFile)
+    }
+
+    const fileNodes: CodeGraphNode[] = [fileNode]
+    const fileEdges: CodeGraphEdge[] = []
+    const symbolNodesMap = new Map<string, CodeGraphNode>()
+
+    // 1. Process Symbols
+    for (const sym of parsed.symbols) {
+      const symNode: CodeGraphNode = {
+        id: `${relPath}#${sym.name}:${sym.line}`,
+        name: sym.name,
+        kind: sym.kind,
+        filePath: relPath,
+        line: sym.line,
+        endLine: sym.endLine,
+      }
+      this.graph.addNode(symNode)
+      fileNodes.push(symNode)
+      symbolsInFile.set(sym.name, symNode)
+      symbolNodesMap.set(sym.name, symNode)
+
+      const containsEdge: CodeGraphEdge = {
+        from: fileNodeId,
+        to: symNode.id,
+        relation: 'contains',
+      }
+      this.graph.addEdge(containsEdge)
+      fileEdges.push(containsEdge)
+
+      // If method of a class/struct, link class -> method contains edge
+      if (sym.parentName) {
+        const parentNode = symbolNodesMap.get(sym.parentName) || symbolsInFile.get(sym.parentName)
+        if (parentNode) {
+          const parentContainsEdge: CodeGraphEdge = {
+            from: parentNode.id,
+            to: symNode.id,
+            relation: 'contains',
+          }
+          this.graph.addEdge(parentContainsEdge)
+          fileEdges.push(parentContainsEdge)
+        }
+      }
+    }
+
+    // 2. Process Imports
+    for (const imp of parsed.imports) {
+      const resolvedPath = resolveModulePath(
+        relPath,
+        imp.specifier,
+        rootDir,
+        this.configParser,
+        this.fileSymbols.keys(),
+      )
+
+      if (resolvedPath) {
+        importsInFile.add(resolvedPath)
+        const targetNode: CodeGraphNode = {
+          id: resolvedPath,
+          name: resolvedPath,
+          kind: 'file',
+          filePath: resolvedPath,
+        }
+        this.graph.addNode(targetNode)
+
+        const importEdge: CodeGraphEdge = {
+          from: fileNodeId,
+          to: resolvedPath,
+          relation: 'imports',
+        }
+        this.graph.addEdge(importEdge)
+        fileEdges.push(importEdge)
+
+        bindingsInFile.set(imp.localName, {
+          importedName: imp.importedName,
+          localName: imp.localName,
+          sourcePath: resolvedPath,
+          isNamespace: imp.isNamespace,
+        })
+      }
+    }
+
+    // 3. Process Heritages
+    const pendingHeritagesForFile: { sourceId: string; targetName: string; relation: 'extends' | 'implements' }[] = []
+    for (const h of parsed.heritages) {
+      const sourceNode = symbolNodesMap.get(h.sourceName) || symbolsInFile.get(h.sourceName)
+      if (sourceNode) {
+        this.pendingHeritages.push({
+          sourceNode,
+          targetName: h.targetName,
+          relation: h.relation,
+          sourceRelPath: relPath,
+        })
+        pendingHeritagesForFile.push({
+          sourceId: sourceNode.id,
+          targetName: h.targetName,
+          relation: h.relation,
+        })
+      }
+    }
+
+    // 4. Process Calls
+    const filePendingCalls: { callerId: string; calleeName: string; calleeObject?: string }[] = []
+    for (const c of parsed.calls) {
+      const callerNode = symbolNodesMap.get(c.callerName) || symbolsInFile.get(c.callerName)
+      if (callerNode) {
+        this.pendingCalls.push({
+          callerNode,
+          calleeName: c.calleeName,
+          calleeObject: c.calleeObject,
+          sourceRelPath: relPath,
+        })
+        filePendingCalls.push({
+          callerId: callerNode.id,
+          calleeName: c.calleeName,
+          calleeObject: c.calleeObject,
+        })
+      }
+    }
+
+    // 5. Cache entry
+    const bindingsObj: Record<string, ImportBinding> = {}
+    for (const [k, v] of bindingsInFile.entries()) {
+      bindingsObj[k] = v
+    }
+
+    const fileCache: FileIndexCache = {
+      filePath: relPath,
+      mtimeMs: Date.now(),
+      hash: this.cacheStore.computeHash(content),
+      nodes: fileNodes,
+      edges: fileEdges,
+      imports: Array.from(importsInFile),
+      bindings: bindingsObj,
+      pendingCalls: filePendingCalls,
+      pendingHeritages: pendingHeritagesForFile,
+    }
+    this.cacheStore.set(relPath, fileCache)
+
+    if (autoLink) {
+      this.linkAllCalls()
+      this.linkAllHeritages()
+    }
+  }
+
+  /**
+   * Dedicated TypeScript, JavaScript, Vue SFC, and Svelte AST analysis.
+   */
+  private analyzeTsAndSfcSourceCode(relPath: string, content: string, rootDir: string, autoLink = true): void {
     const isSFC = relPath.endsWith('.vue') || relPath.endsWith('.svelte')
     const primaryKind: CodeNodeKind = isSFC ? 'component' : 'file'
 
@@ -658,7 +863,9 @@ export class TSParser {
           const nsBinding = fileBindings.get(call.calleeObject)
           if (nsBinding && nsBinding.isNamespace) {
             const targetFileSymbols = this.fileSymbols.get(nsBinding.sourcePath)
-            targetNode = targetFileSymbols?.get(call.calleeName)
+            targetNode =
+              targetFileSymbols?.get(call.calleeName) ||
+              targetFileSymbols?.get(`${nsBinding.importedName}.${call.calleeName}`)
           }
         }
       }

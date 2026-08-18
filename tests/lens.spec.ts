@@ -9,6 +9,9 @@ import {
   LensWatcher,
   DriverRegistry,
   extractSFCBlocks,
+  parsePythonSource,
+  parseGoSource,
+  parseRustSource,
   formatGraphMarkdown,
   generateMermaidDiagram,
   presentLensCall,
@@ -252,7 +255,7 @@ describe('IncrementalCacheStore & Disk Snapshot', () => {
   })
 })
 
-describe('Phase 4: Frontend SFC & Multi-Driver Support', () => {
+describe('Phase 4: Frontend SFC & Vue/Svelte Support', () => {
   it('extracts Vue 3 <script setup lang="ts"> and template component tags', () => {
     const vueCode = `
       <template>
@@ -321,7 +324,6 @@ describe('Phase 4: Frontend SFC & Multi-Driver Support', () => {
 
     const graph = analyzer.getGraph()
 
-    // 1. App.vue node should be of kind 'component'
     const appNode = graph.getNode('src/App.vue')
     expect(appNode).toBeDefined()
     expect(appNode?.kind).toBe('component')
@@ -330,13 +332,11 @@ describe('Phase 4: Frontend SFC & Multi-Driver Support', () => {
     expect(userHeaderNode).toBeDefined()
     expect(userHeaderNode?.kind).toBe('component')
 
-    // 2. App.vue imports UserHeader.vue and utils.ts
     const appOutEdges = graph.getOutboundEdges('src/App.vue')
     const importTargets = appOutEdges.filter((e) => e.relation === 'imports').map((e) => e.to)
     expect(importTargets).toContain('src/UserHeader.vue')
     expect(importTargets).toContain('src/utils.ts')
 
-    // 3. Template <UserHeader /> creates usage call edge
     const callTargets = appOutEdges.filter((e) => e.relation === 'calls').map((e) => e.to)
     expect(callTargets).toContain('src/UserHeader.vue')
   })
@@ -368,13 +368,252 @@ describe('Phase 4: Frontend SFC & Multi-Driver Support', () => {
     const outEdges = graph.getOutboundEdges('src/Main.svelte')
     expect(outEdges.some((e) => e.to === 'src/Child.svelte' && e.relation === 'imports')).toBe(true)
   })
+})
 
-  it('checks DriverRegistry registration and extension match', () => {
+describe('Phase 5: Polyglot Drivers (Python, Go, Rust)', () => {
+  it('extracts Python classes, methods, inheritance, and imports', () => {
+    const analyzer = new CodeAnalyzer()
+
+    const utilsPy = `
+def hash_password(pwd: str) -> str:
+    return "hashed_" + pwd
+`
+
+    const servicePy = `
+from .utils import hash_password
+
+class BaseService:
+    def init(self):
+        pass
+
+class UserService(BaseService):
+    def register(self, username, password):
+        hashed = hash_password(password)
+        self.init()
+        return hashed
+`
+
+    analyzer.analyzeSourceCode('services/utils.py', utilsPy, '/root', false)
+    analyzer.analyzeSourceCode('services/user_service.py', servicePy, '/root', true)
+
+    const graph = analyzer.getGraph()
+
+    // 1. Files & Classes
+    expect(graph.getNode('services/user_service.py')).toBeDefined()
+    const userClass = graph.findNodes('UserService')[0]!
+    const baseClass = graph.findNodes('BaseService')[0]!
+    expect(userClass).toBeDefined()
+    expect(baseClass).toBeDefined()
+
+    // 2. Extends relation
+    const extendsEdges = graph.getOutboundEdges(userClass.id).filter((e) => e.relation === 'extends')
+    expect(extendsEdges.map((e) => e.to)).toContain(baseClass.id)
+
+    // 3. Method symbols & calls
+    const registerMethod = graph.findNodes('UserService.register')[0]!
+    const hashFunc = graph.findNodes('hash_password')[0]!
+    expect(registerMethod).toBeDefined()
+    expect(hashFunc).toBeDefined()
+
+    const registerCalls = graph.getOutboundEdges(registerMethod.id).filter((e) => e.relation === 'calls')
+    expect(registerCalls.map((e) => e.to)).toContain(hashFunc.id)
+  })
+
+  it('extracts Go structs, interfaces, receiver methods, and cross-package imports', () => {
+    const analyzer = new CodeAnalyzer()
+
+    const dbGo = `
+package db
+
+func ExecQuery(q string) error {
+    return nil
+}
+`
+
+    const userGo = `
+package models
+
+import "my-app/pkg/db"
+
+type User struct {
+    ID int
+    Name string
+}
+
+type Storage interface {
+    Save() error
+}
+
+func (u *User) Save() error {
+    return db.ExecQuery("INSERT INTO users")
+}
+`
+
+    analyzer.analyzeSourceCode('pkg/db/db.go', dbGo, '/root', false)
+    analyzer.analyzeSourceCode('pkg/models/user.go', userGo, '/root', true)
+
+    const graph = analyzer.getGraph()
+
+    // 1. Struct & Interface
+    const userStruct = graph.findNodes('User')[0]!
+    const storageIface = graph.findNodes('Storage')[0]!
+    expect(userStruct.kind).toBe('class')
+    expect(storageIface.kind).toBe('interface')
+
+    // 2. Receiver method
+    const saveMethod = graph.findNodes('User.Save')[0]!
+    expect(saveMethod).toBeDefined()
+
+    // User struct contains User.Save method
+    const structContains = graph.getOutboundEdges(userStruct.id).filter((e) => e.relation === 'contains')
+    expect(structContains.map((e) => e.to)).toContain(saveMethod.id)
+
+    // 3. Call to db.ExecQuery
+    const execQueryFunc = graph.findNodes('ExecQuery')[0]!
+    expect(execQueryFunc).toBeDefined()
+  })
+
+  it('extracts Rust structs, traits, impls, and method associations', () => {
+    const analyzer = new CodeAnalyzer()
+
+    const authRs = `
+pub fn check_token(token: &str) -> bool {
+    true
+}
+`
+
+    const modelRs = `
+use crate::auth::check_token;
+
+pub struct AuthClient;
+
+pub trait Authenticator {
+    fn login(&self, token: &str) -> bool;
+}
+
+impl Authenticator for AuthClient {
+    fn login(&self, token: &str) -> bool {
+        check_token(token)
+    }
+}
+`
+
+    analyzer.analyzeSourceCode('src/auth.rs', authRs, '/root', false)
+    analyzer.analyzeSourceCode('src/model.rs', modelRs, '/root', true)
+
+    const graph = analyzer.getGraph()
+
+    // 1. Struct & Trait
+    const clientStruct = graph.findNodes('AuthClient')[0]!
+    const authTrait = graph.findNodes('Authenticator')[0]!
+    expect(clientStruct.kind).toBe('class')
+    expect(authTrait.kind).toBe('interface')
+
+    // 2. Implements relation
+    const implEdges = graph.getOutboundEdges(clientStruct.id).filter((e) => e.relation === 'implements')
+    expect(implEdges.map((e) => e.to)).toContain(authTrait.id)
+
+    // 3. Call check_token
+    const loginMethod = graph.findNodes('AuthClient.login')[0]!
+    const checkTokenFunc = graph.findNodes('check_token')[0]!
+    expect(loginMethod).toBeDefined()
+    expect(checkTokenFunc).toBeDefined()
+
+    const loginCalls = graph.getOutboundEdges(loginMethod.id).filter((e) => e.relation === 'calls')
+    expect(loginCalls.map((e) => e.to)).toContain(checkTokenFunc.id)
+  })
+
+  it('analyzes full-stack polyglot monorepo (TS + Vue + Python + Go + Rust) in a unified graph', () => {
+    const analyzer = new CodeAnalyzer()
+
+    // 1. Frontend Vue & TS
+    analyzer.analyzeSourceCode(
+      'frontend/App.vue',
+      `<template><button @click="callApi">Submit</button></template><script setup lang="ts">
+      import { request } from './api.ts'
+      function callApi() { request() }
+      </script>`,
+      '/root',
+      false,
+    )
+    analyzer.analyzeSourceCode(
+      'frontend/api.ts',
+      `export function request() { return 'ok' }`,
+      '/root',
+      false,
+    )
+
+    // 2. Python Backend
+    analyzer.analyzeSourceCode(
+      'backend/py/main.py',
+      `from .services import run_service
+def entry():
+    run_service()`,
+      '/root',
+      false,
+    )
+    analyzer.analyzeSourceCode(
+      'backend/py/services.py',
+      `def run_service():
+    return True`,
+      '/root',
+      false,
+    )
+
+    // 3. Go Microservice
+    analyzer.analyzeSourceCode(
+      'backend/go/main.go',
+      `package main
+func StartServer() {
+    InitConfig()
+}
+func InitConfig() {}`,
+      '/root',
+      false,
+    )
+
+    // 4. Rust Engine
+    analyzer.analyzeSourceCode(
+      'engine/src/lib.rs',
+      `pub fn compute_hash() -> u64 { 12345 }`,
+      '/root',
+      true,
+    )
+
+    const graph = analyzer.getGraph()
+
+    // Verify all multi-language files exist in single unified graph
+    expect(graph.getNode('frontend/App.vue')).toBeDefined()
+    expect(graph.getNode('frontend/api.ts')).toBeDefined()
+    expect(graph.getNode('backend/py/main.py')).toBeDefined()
+    expect(graph.getNode('backend/go/main.go')).toBeDefined()
+    expect(graph.getNode('engine/src/lib.rs')).toBeDefined()
+
+    // Verify cross-file calls in different languages
+    const vueCalls = graph.getOutboundEdges('frontend/App.vue#callApi:3').filter((e) => e.relation === 'calls')
+    expect(vueCalls.length).toBeGreaterThan(0)
+
+    const pyCalls = graph.getOutboundEdges('backend/py/main.py#entry:2').filter((e) => e.relation === 'calls')
+    expect(pyCalls.length).toBeGreaterThan(0)
+
+    const goCalls = graph.getOutboundEdges('backend/go/main.go#StartServer:2').filter((e) => e.relation === 'calls')
+    expect(goCalls.length).toBeGreaterThan(0)
+
+    // Global Metrics Across All Languages
+    const metrics = graph.calculateMetrics()
+    expect(metrics.totalFiles).toBe(6)
+    expect(metrics.totalSymbols).toBeGreaterThan(5)
+  })
+
+  it('checks DriverRegistry support for TS, Vue, Svelte, Python, Go, and Rust', () => {
     const registry = new DriverRegistry()
+    expect(registry.isSupported('main.ts')).toBe(true)
     expect(registry.isSupported('App.vue')).toBe(true)
-    expect(registry.isSupported('App.svelte')).toBe(true)
-    expect(registry.isSupported('index.ts')).toBe(true)
-    expect(registry.isSupported('unknown.xyz')).toBe(false)
+    expect(registry.isSupported('Component.svelte')).toBe(true)
+    expect(registry.isSupported('script.py')).toBe(true)
+    expect(registry.isSupported('server.go')).toBe(true)
+    expect(registry.isSupported('lib.rs')).toBe(true)
+    expect(registry.isSupported('document.pdf')).toBe(false)
   })
 })
 
