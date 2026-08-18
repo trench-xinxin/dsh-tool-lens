@@ -1,11 +1,11 @@
 # DeepSeek Lens (`@trench-xinxin/dsh-tool-lens`)
 
 <p align="left">
-  <a href="./README.md">English</a> | <b>简体中文</b>
+  <a href="https://github.com/0409wx/dsh-tool-lens/blob/main/README.md">English</a> | <b>简体中文</b>
 </p>
 
 [![npm version](https://img.shields.io/npm/v/@trench-xinxin/dsh-tool-lens.svg)](https://www.npmjs.com/package/@trench-xinxin/dsh-tool-lens)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/0409wx/dsh-tool-lens/blob/main/LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek-Harness%20Plugin-0066FF.svg)](https://github.com/deepseek-ai/deepseek-harness)
 
 **DeepSeek Lens** 是专为 **DeepSeek Harness** 智能体底座打造的高性能、确定性 AST 代码图谱与拓扑分析工具插件。

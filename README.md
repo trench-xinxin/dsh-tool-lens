@@ -1,11 +1,11 @@
 # DeepSeek Lens (`@trench-xinxin/dsh-tool-lens`)
 
 <p align="left">
-  <b>English</b> | <a href="./README.zh.md">简体中文</a>
+  <b>English</b> | <a href="https://github.com/0409wx/dsh-tool-lens/blob/main/README.zh.md">简体中文</a>
 </p>
 
 [![npm version](https://img.shields.io/npm/v/@trench-xinxin/dsh-tool-lens.svg)](https://www.npmjs.com/package/@trench-xinxin/dsh-tool-lens)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/0409wx/dsh-tool-lens/blob/main/LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek-Harness%20Plugin-0066FF.svg)](https://github.com/deepseek-ai/deepseek-harness)
 
 **DeepSeek Lens** is a high-performance, deterministic AST code graph and topological analysis tool plugin specifically designed for the **DeepSeek Harness** agent foundation.
