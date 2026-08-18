@@ -13,12 +13,14 @@ import { tmpdir } from 'node:os'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const pkgRoot = join(__dirname, '..')
+// Point directly to the compiled ESM entry point file to satisfy Node.js strict ESM loader
+const entryFile = join(pkgRoot, 'lib', 'index.mjs').replace(/\\/g, '/')
 
 // Temporary patch YAML to overlay Lens onto any DSH invocation
 const tempPatch = join(tmpdir(), `dsh-lens-patch-${process.pid}-${Date.now()}.yml`)
 const patchContent = `- insert:
     - id: tool-lens
-      name: '${pkgRoot}'
+      name: '${entryFile}'
       config:
         maxDepth: 3
 `

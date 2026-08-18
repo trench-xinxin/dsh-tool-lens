@@ -4,6 +4,13 @@
 
 ---
 
+## [1.3.2] - 2026-08-18
+
+### 🩹 CLI Loader 绝对路径导入修复 (Fixes)
+- 修复 Node.js ESM 环境下执行 `npx @trench-xinxin/dsh-tool-lens` 报 `ERR_UNSUPPORTED_DIR_IMPORT` 的问题：在临时 patch 配置中将插件路径精确指向构建产物 `lib/index.mjs`，完全符合 Node.js 原生 ESM loader 规范。
+
+---
+
 ## [1.3.1] - 2026-08-18
 
 ### 🩹 CLI 启动器修复 (Fixes)
