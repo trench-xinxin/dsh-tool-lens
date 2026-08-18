@@ -5,6 +5,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/trench-xinxin/dsh-tool-lens/actions/workflows/ci.yml"><img src="https://github.com/trench-xinxin/dsh-tool-lens/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://npmjs.com/package/@trench-xinxin/dsh-tool-lens"><img src="https://img.shields.io/npm/v/@trench-xinxin/dsh-tool-lens.svg" alt="npm version" /></a>
   <a href="https://npmjs.com/package/@trench-xinxin/dsh-tool-lens"><img src="https://img.shields.io/npm/dm/@trench-xinxin/dsh-tool-lens.svg" alt="npm downloads" /></a>
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/trench-xinxin/dsh-tool-lens/blob/main/LICENSE)
