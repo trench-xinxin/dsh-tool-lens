@@ -4,6 +4,13 @@
 
 ---
 
+## [1.3.6] - 2026-08-18
+
+### 🩹 仓库地址与文档链接迁移 (Chores)
+- 将 `package.json` 中的 `repository.url`、`homepage`、`bugs.url` 以及 `README.md` / `README.zh.md` 中的所有仓库链接统一迁移更新为 `https://github.com/trench-xinxin/dsh-tool-lens`。
+
+---
+
 ## [1.3.5] - 2026-08-18
 
 ### 🩹 JSON Schema 规范兼容与端口自动避让 (Fixes)
