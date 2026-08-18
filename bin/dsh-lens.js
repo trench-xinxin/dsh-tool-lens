@@ -32,35 +32,24 @@ async function findFreePort(startPort = 3080) {
 async function main() {
   const args = process.argv.slice(2)
   const isWeb = args.length === 0 || args[0] === 'web'
+  const hasUserPort = args.includes('--port') || args.includes('-p')
 
   let targetPort = 3080
-  if (isWeb) {
+  if (isWeb && !hasUserPort) {
     targetPort = await findFreePort(3080)
     if (targetPort !== 3080) {
-      console.log(`[dsh-lens] ℹ️ Port 3080 is in use, auto-routing to free port: http://127.0.0.1:${targetPort}`)
+      console.log(`[dsh-lens] ℹ️ Port 3080 is occupied, auto-routing to free port: http://127.0.0.1:${targetPort}`)
     }
   }
 
   // Temporary patch YAML to overlay Lens onto any DSH invocation
   const tempPatch = join(tmpdir(), `dsh-lens-patch-${process.pid}-${Date.now()}.yml`)
-  const patchLines = [
-    `- insert:`,
-    `    - id: tool-lens`,
-    `      name: '${entryFile}'`,
-    `      config:`,
-    `        maxDepth: 3`,
-  ]
-
-  if (targetPort !== 3080) {
-    patchLines.push(
-      `- update:`,
-      `    id: webserver`,
-      `    config:`,
-      `      port: ${targetPort}`,
-    )
-  }
-
-  const patchContent = patchLines.join('\n') + '\n'
+  const patchContent = `- insert:
+    - id: tool-lens
+      name: '${entryFile}'
+      config:
+        maxDepth: 3
+`
 
   try {
     writeFileSync(tempPatch, patchContent, 'utf8')
@@ -69,7 +58,14 @@ async function main() {
     process.exit(1)
   }
 
-  const dshArgs = args.length === 0 ? ['web', '--patch', tempPatch] : [...args, '--patch', tempPatch]
+  let dshArgs = []
+  if (args.length === 0) {
+    dshArgs = ['web', '--port', String(targetPort), '--patch', tempPatch]
+  } else if (args[0] === 'web') {
+    dshArgs = hasUserPort ? [...args, '--patch', tempPatch] : ['web', '--port', String(targetPort), ...args.slice(1), '--patch', tempPatch]
+  } else {
+    dshArgs = [...args, '--patch', tempPatch]
+  }
 
   const isWindows = process.platform === 'win32'
   const npxCmd = isWindows ? 'npx.cmd' : 'npx'
