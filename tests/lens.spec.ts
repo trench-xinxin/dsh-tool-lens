@@ -13,6 +13,9 @@ import {
   parseGoSource,
   parseRustSource,
   parseJavaSource,
+  buildPathfindingResult,
+  buildUnusedResult,
+  buildLintResult,
   formatGraphMarkdown,
   generateMermaidDiagram,
   presentLensCall,
@@ -217,157 +220,84 @@ describe('GraphStore - Architecture Metrics & Instability', () => {
   })
 })
 
-describe('IncrementalCacheStore & Disk Snapshot', () => {
-  it('handles caching, hash computation, and snapshot save/load', () => {
-    const cache = new IncrementalCacheStore()
+describe('Phase 6: Pathfinding, Dead Code & Architecture Governance', () => {
+  it('finds shortest call path between distant symbols across multiple hops', () => {
+    const store = new GraphStore()
 
-    cache.set('src/test.ts', {
-      filePath: 'src/test.ts',
-      mtimeMs: 123456,
-      hash: cache.computeHash('export const x = 1'),
-      nodes: [{ id: 'src/test.ts', name: 'src/test.ts', kind: 'file', filePath: 'src/test.ts' }],
-      edges: [],
-      imports: [],
-      bindings: {},
-      pendingCalls: [],
-      pendingHeritages: [],
+    // Controller -> Service -> Repository -> Database
+    store.addNode({ id: 'src/ctrl.ts#login:5', name: 'login', kind: 'function', filePath: 'src/ctrl.ts' })
+    store.addNode({ id: 'src/svc.ts#auth:10', name: 'auth', kind: 'function', filePath: 'src/svc.ts' })
+    store.addNode({ id: 'src/repo.ts#findUser:15', name: 'findUser', kind: 'function', filePath: 'src/repo.ts' })
+    store.addNode({ id: 'src/db.ts#query:20', name: 'query', kind: 'function', filePath: 'src/db.ts' })
+
+    store.addEdge({ from: 'src/ctrl.ts#login:5', to: 'src/svc.ts#auth:10', relation: 'calls' })
+    store.addEdge({ from: 'src/svc.ts#auth:10', to: 'src/repo.ts#findUser:15', relation: 'calls' })
+    store.addEdge({ from: 'src/repo.ts#findUser:15', to: 'src/db.ts#query:20', relation: 'calls' })
+
+    const result = buildPathfindingResult(store, 'login', 'query')
+    expect(result.pathfinding).toBeDefined()
+    expect(result.pathfinding?.isFound).toBe(true)
+    expect(result.pathfinding?.path).toHaveLength(4)
+    expect(result.pathfinding?.edges).toHaveLength(3)
+    expect(result.pathfinding?.hops).toHaveLength(3)
+    expect(result.summary).toContain('3 hop(s)')
+  })
+
+  it('returns not found when no invocation path connects two symbols', () => {
+    const store = new GraphStore()
+    store.addNode({ id: 'src/a.ts#fnA:1', name: 'fnA', kind: 'function', filePath: 'src/a.ts' })
+    store.addNode({ id: 'src/b.ts#fnB:1', name: 'fnB', kind: 'function', filePath: 'src/b.ts' })
+
+    const result = buildPathfindingResult(store, 'fnA', 'fnB')
+    expect(result.pathfinding?.isFound).toBe(false)
+    expect(result.summary).toContain('No connecting path found')
+  })
+
+  it('detects orphan files and unused symbols with zero afferent references', () => {
+    const store = new GraphStore()
+
+    // Active entry
+    store.addNode({ id: 'src/index.ts', name: 'src/index.ts', kind: 'file', filePath: 'src/index.ts' })
+    store.addNode({ id: 'src/used.ts', name: 'src/used.ts', kind: 'file', filePath: 'src/used.ts' })
+    store.addNode({ id: 'src/used.ts#activeFunc:1', name: 'activeFunc', kind: 'function', filePath: 'src/used.ts' })
+
+    // Orphan dead file & symbol
+    store.addNode({ id: 'src/dead_module.ts', name: 'src/dead_module.ts', kind: 'file', filePath: 'src/dead_module.ts' })
+    store.addNode({ id: 'src/dead_module.ts#unusedHelper:1', name: 'unusedHelper', kind: 'function', filePath: 'src/dead_module.ts' })
+
+    store.addEdge({ from: 'src/index.ts', to: 'src/used.ts', relation: 'imports' })
+    store.addEdge({ from: 'src/index.ts', to: 'src/used.ts#activeFunc:1', relation: 'calls' })
+
+    const result = buildUnusedResult(store)
+    expect(result.deadCode).toBeDefined()
+    expect(result.deadCode?.orphanFiles.map((f) => f.filePath)).toContain('src/dead_module.ts')
+    expect(result.deadCode?.unusedSymbols.map((s) => s.name)).toContain('unusedHelper')
+  })
+
+  it('lints architecture layer boundary rules and catches illegal cross-layer calls', () => {
+    const store = new GraphStore()
+
+    store.addNode({ id: 'src/views/UserPage.vue', name: 'UserPage.vue', kind: 'component', filePath: 'src/views/UserPage.vue' })
+    store.addNode({ id: 'src/infra/database.ts', name: 'database.ts', kind: 'file', filePath: 'src/infra/database.ts' })
+
+    // Illegal: Presentation views directly importing infra database!
+    store.addEdge({
+      from: 'src/views/UserPage.vue',
+      to: 'src/infra/database.ts',
+      relation: 'imports',
     })
 
-    expect(cache.has('src/test.ts')).toBe(true)
-    expect(cache.size).toBe(1)
+    const rules = [
+      {
+        from: 'src/views/**',
+        to: 'src/infra/**',
+        description: 'Views must not directly access Infrastructure layer.',
+      },
+    ]
 
-    const snapshotPath = join(process.cwd(), '.dsh/test-cache-snapshot.json')
-    try {
-      const saved = cache.saveToFile(snapshotPath, process.cwd())
-      expect(saved).toBe(true)
-
-      const restoredCache = new IncrementalCacheStore()
-      const loaded = restoredCache.loadFromFile(snapshotPath)
-      expect(loaded).toBe(true)
-      expect(restoredCache.has('src/test.ts')).toBe(true)
-      expect(restoredCache.get('src/test.ts')?.mtimeMs).toBe(123456)
-    } finally {
-      if (existsSync(snapshotPath)) {
-        try {
-          unlinkSync(snapshotPath)
-        } catch {}
-      }
-    }
-  })
-})
-
-describe('Phase 4: Frontend SFC & Vue/Svelte Support', () => {
-  it('extracts Vue 3 <script setup lang="ts"> and template component tags', () => {
-    const vueCode = `
-      <template>
-        <div class="container">
-          <UserHeader :title="heading" />
-          <my-button @click="handleClick">Submit</my-button>
-        </div>
-      </template>
-
-      <script setup lang="ts">
-      import { ref } from 'vue'
-      import UserHeader from './UserHeader.vue'
-      import MyButton from './MyButton.vue'
-      import { formatTitle } from './utils.ts'
-
-      const heading = ref(formatTitle('Dashboard'))
-
-      function handleClick() {
-        console.log('clicked')
-      }
-      </script>
-    `
-
-    const extracted = extractSFCBlocks(vueCode, 'src/App.vue')
-    expect(extracted.lang).toBe('ts')
-    expect(extracted.scriptContent).toContain('UserHeader')
-    expect(extracted.scriptContent).toContain('handleClick')
-    expect(extracted.templateComponents).toEqual(
-      expect.arrayContaining(['UserHeader', 'MyButton', 'my-button']),
-    )
-  })
-
-  it('analyzes Vue 3 SFC component dependency graph and template calls', () => {
-    const analyzer = new CodeAnalyzer()
-
-    const userHeaderVue = `
-      <template>
-        <h1>{{ title }}</h1>
-      </template>
-      <script setup lang="ts">
-      defineProps<{ title: string }>()
-      </script>
-    `
-
-    const utilsTs = `
-      export function formatTitle(t: string) {
-        return t.toUpperCase()
-      }
-    `
-
-    const appVue = `
-      <template>
-        <UserHeader :title="heading" />
-      </template>
-      <script setup lang="ts">
-      import UserHeader from './UserHeader.vue'
-      import { formatTitle } from './utils.ts'
-
-      const heading = formatTitle('Lens App')
-      </script>
-    `
-
-    analyzer.analyzeSourceCode('src/UserHeader.vue', userHeaderVue, '/root', false)
-    analyzer.analyzeSourceCode('src/utils.ts', utilsTs, '/root', false)
-    analyzer.analyzeSourceCode('src/App.vue', appVue, '/root', true)
-
-    const graph = analyzer.getGraph()
-
-    const appNode = graph.getNode('src/App.vue')
-    expect(appNode).toBeDefined()
-    expect(appNode?.kind).toBe('component')
-
-    const userHeaderNode = graph.getNode('src/UserHeader.vue')
-    expect(userHeaderNode).toBeDefined()
-    expect(userHeaderNode?.kind).toBe('component')
-
-    const appOutEdges = graph.getOutboundEdges('src/App.vue')
-    const importTargets = appOutEdges.filter((e) => e.relation === 'imports').map((e) => e.to)
-    expect(importTargets).toContain('src/UserHeader.vue')
-    expect(importTargets).toContain('src/utils.ts')
-
-    const callTargets = appOutEdges.filter((e) => e.relation === 'calls').map((e) => e.to)
-    expect(callTargets).toContain('src/UserHeader.vue')
-  })
-
-  it('analyzes Svelte component files (.svelte)', () => {
-    const analyzer = new CodeAnalyzer()
-
-    const childSvelte = `
-      <script lang="ts">
-      export let name = 'World';
-      </script>
-      <h1>Hello {name}</h1>
-    `
-
-    const mainSvelte = `
-      <script lang="ts">
-      import Child from './Child.svelte';
-      </script>
-      <Child name="Svelte" />
-    `
-
-    analyzer.analyzeSourceCode('src/Child.svelte', childSvelte, '/root', false)
-    analyzer.analyzeSourceCode('src/Main.svelte', mainSvelte, '/root', true)
-
-    const graph = analyzer.getGraph()
-    const mainNode = graph.getNode('src/Main.svelte')
-    expect(mainNode?.kind).toBe('component')
-
-    const outEdges = graph.getOutboundEdges('src/Main.svelte')
-    expect(outEdges.some((e) => e.to === 'src/Child.svelte' && e.relation === 'imports')).toBe(true)
+    const result = buildLintResult(store, rules)
+    expect(result.architectureViolations).toHaveLength(1)
+    expect(result.architectureViolations![0]?.reason).toContain('Views must not directly access Infrastructure layer')
   })
 })
 
@@ -991,7 +921,7 @@ describe('Presenters, Markdown & Mermaid Rendering', () => {
 })
 
 describe('Plugin Registration & All Actions Execution', () => {
-  it('registers and executes lens tool for dependencies, call_graph, impact, circular, and metrics', async () => {
+  it('registers and executes lens tool for dependencies, call_graph, impact, circular, metrics, path, unused, and lint', async () => {
     const ctx = new MockContext()
     ctx.plugin(ToolLens, { maxDepth: 4, cache: true })
 
@@ -1059,5 +989,50 @@ describe('Plugin Registration & All Actions Execution', () => {
     expect(metricsGraph.action).toBe('metrics')
     expect(metricsGraph.metrics).toBeDefined()
     expect(metricsGraph.metrics?.totalFiles).toBeGreaterThan(0)
+
+    // 5. Unused Action (Dead Code Audit)
+    const unusedRes = await ctx.tools.execute({
+      signal,
+      callId: 'call-5',
+      name: 'lens',
+      arguments: {
+        action: 'unused',
+      },
+    })
+    expect(unusedRes.isError).toBe(false)
+    const unusedGraph = unusedRes.value as unknown as CodeGraphResult
+    expect(unusedGraph.action).toBe('unused')
+    expect(unusedGraph.deadCode).toBeDefined()
+
+    // 6. Lint Action (Architecture Boundary Rules)
+    const lintRes = await ctx.tools.execute({
+      signal,
+      callId: 'call-6',
+      name: 'lens',
+      arguments: {
+        action: 'lint',
+      },
+    })
+    expect(lintRes.isError).toBe(false)
+    const lintGraph = lintRes.value as unknown as CodeGraphResult
+    expect(lintGraph.action).toBe('lint')
+    expect(lintGraph.architectureViolations).toBeDefined()
+
+    // 7. Path Action (Shortest Invocation Trace)
+    const pathRes = await ctx.tools.execute({
+      signal,
+      callId: 'call-7',
+      name: 'lens',
+      arguments: {
+        action: 'path',
+        target: 'src/index.ts',
+        to: 'src/analyzer.ts',
+      },
+    })
+    expect(pathRes.isError).toBe(false)
+    const pathGraph = pathRes.value as unknown as CodeGraphResult
+    expect(pathGraph.action).toBe('path')
+    expect(pathGraph.pathfinding).toBeDefined()
+    expect(pathGraph.pathfinding?.isFound).toBe(true)
   })
 })

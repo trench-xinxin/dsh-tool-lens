@@ -1,6 +1,7 @@
 /**
  * Model-facing `lens` tool for symbol call hierarchies, file dependencies,
- * circular dependency audit, architecture metrics, and refactoring impact analysis.
+ * circular dependency audit, architecture metrics, refactoring impact analysis,
+ * pathfinding, dead code detection, and architecture boundary linting.
  *
  * Namespace plugin (named exports, no default export).
  * @module @trench-xinxin/dsh-tool-lens
@@ -12,9 +13,12 @@ import Schema from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { CodeAnalyzer } from './analyzer.ts'
+import { buildLintResult } from './analytics/architecture.ts'
 import { buildCircularResult } from './analytics/circular.ts'
+import { buildUnusedResult } from './analytics/deadcode.ts'
 import { analyzeImpact } from './analytics/impact.ts'
 import { buildMetricsResult } from './analytics/metrics.ts'
+import { buildPathfindingResult } from './analytics/pathfinding.ts'
 import { formatGraphMarkdown, presentLensCall, presentLensResult } from './render.ts'
 import type { CodeGraphResult, LensArgs } from './types.ts'
 
@@ -33,6 +37,9 @@ export * from './parsers/watcher.ts'
 export * from './analytics/circular.ts'
 export * from './analytics/metrics.ts'
 export * from './analytics/impact.ts'
+export * from './analytics/pathfinding.ts'
+export * from './analytics/deadcode.ts'
+export * from './analytics/architecture.ts'
 export * from './render.ts'
 export * from './analyzer.ts'
 
@@ -44,7 +51,7 @@ export const inject = ['tools', 'systemPrompt']
 
 /** System prompt guidance describing the purpose and usage of the tool. */
 export const LENS_PROMPT_TEXT =
-  'Use the lens tool when you need to understand symbol relationships across files, tracking callers/callees, exploring module dependencies, auditing circular dependencies, evaluating architecture coupling metrics, or measuring the blast radius of refactoring.'
+  'Use the lens tool when you need to understand symbol relationships across files, tracking callers/callees, exploring module dependencies, auditing circular dependencies, evaluating architecture coupling metrics, tracing shortest call paths, discovering dead code, or measuring the blast radius of refactoring.'
 
 /** Plugin configuration schema. */
 export interface Config {
@@ -133,6 +140,15 @@ const LENS_OUTPUT_SCHEMA = {
     impactTiers: {
       type: 'object',
     },
+    pathfinding: {
+      type: 'object',
+    },
+    deadCode: {
+      type: 'object',
+    },
+    architectureViolations: {
+      type: 'array',
+    },
   },
 } as const
 
@@ -167,18 +183,26 @@ export function apply(ctx: Context, config: Config = {}): void {
     defineTool<LensArgs, CodeGraphResult>({
       name: 'lens',
       description:
-        'Inspect symbol call hierarchies, file dependencies, circular dependencies, architecture metrics, and refactoring impact graphs using AST static analysis.',
+        'Inspect symbol call hierarchies, file dependencies, circular dependencies, architecture metrics, shortest call paths, dead code, and refactoring impact graphs across TypeScript, Vue, Svelte, Python, Go, Rust, and Java codebases.',
       parameters: {
         action: {
           type: 'string',
           required: true,
-          enum: ['dependencies', 'call_graph', 'impact', 'circular', 'metrics'],
+          enum: ['dependencies', 'call_graph', 'impact', 'circular', 'metrics', 'path', 'unused', 'lint'],
           description:
-            'The type of graph query: dependencies (file imports), call_graph (function call hierarchy), impact (blast radius tiers), circular (cycle detection), or metrics (coupling health).',
+            'The type of graph query: dependencies (file imports), call_graph (function calls), impact (blast radius), circular (cycle audit), metrics (coupling health), path (shortest invocation trace), unused (dead code audit), or lint (layer boundary rules).',
         },
         target: {
           type: 'string',
-          description: 'Target symbol name, function name, or relative file path to analyze (optional for circular and metrics).',
+          description: 'Target symbol name, function name, or relative file path to analyze (source node for path action).',
+        },
+        to: {
+          type: 'string',
+          description: 'Destination target symbol or file for pathfinding (action: path).',
+        },
+        rules: {
+          type: 'string',
+          description: 'JSON array string of architectural boundary rules (action: lint).',
         },
         depth: {
           type: 'number',
@@ -216,16 +240,42 @@ export function apply(ctx: Context, config: Config = {}): void {
 
         const targetQuery = lensArgs.target?.trim() ?? ''
 
-        // Specialized Diagnostics Actions
+        // 1. Action: Circular Dependency Audit
         if (lensArgs.action === 'circular') {
           return buildCircularResult(store, targetQuery, lensArgs.scope)
         }
 
+        // 2. Action: Architecture Health Metrics
         if (lensArgs.action === 'metrics') {
           return buildMetricsResult(store, targetQuery)
         }
 
-        // Match Target Nodes for target-based actions
+        // 3. Action: Dead Code & Unused Symbols Audit
+        if (lensArgs.action === 'unused') {
+          return buildUnusedResult(store, lensArgs.scope)
+        }
+
+        // 4. Action: Architecture Layer Rules Lint
+        if (lensArgs.action === 'lint') {
+          return buildLintResult(store, lensArgs.rules)
+        }
+
+        // 5. Action: Pathfinding Shortest Invocation Chain
+        if (lensArgs.action === 'path') {
+          if (!targetQuery || !lensArgs.to) {
+            return {
+              target: targetQuery,
+              action: 'path',
+              rootNodes: [],
+              nodes: [],
+              edges: [],
+              summary: "Error: Both 'target' (from) and 'to' parameters are required for action 'path'.",
+            }
+          }
+          return buildPathfindingResult(store, targetQuery, lensArgs.to)
+        }
+
+        // 6. Actions requiring single target matching (impact, dependencies, call_graph)
         if (!targetQuery) {
           return {
             target: '',

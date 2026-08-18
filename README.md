@@ -51,14 +51,23 @@ npx @trench-xinxin/dsh-tool-lens "Use lens tool to audit circular dependencies i
    - Tarjan SCC and DFS cycle detection algorithm detects closed loops (e.g. `A -> B -> C -> A`).
    - Outputs full cycle loops and involved file lists to avoid runtime initialization deadlocks.
 
-5. **🌍 Polyglot Ecosystem Drivers (`Java / Python / Go / Rust / TS / SFC`)**
+5. **🧭 Shortest Call Path Exploration (`action: path`)**
+   - Bidirectional BFS algorithm traces shortest execution paths and intermediate hops between any two symbols.
+
+6. **🧹 Dead Code & Unused Symbol Audit (`action: unused`)**
+   - Automatically detects entry points, auditing $Ca = 0$ orphan files and unreachable exported functions/classes.
+
+7. **🛡 Architectural Boundary Linting (`action: lint`)**
+   - Enforces layer boundary rules (e.g. `views/**` forbidden to call `infra/**`) to prevent architecture erosion.
+
+8. **🌍 Polyglot Ecosystem Drivers (`Java / Python / Go / Rust / TS / SFC`)**
    - **Java (`.java`)**: `package`, Maven/Gradle paths, `class`, `interface`, `extends`, `implements`, and class method invocations.
    - **Python (`.py`)**: `def`, `class` inheritance, `self.method()`, and relative/absolute package imports.
    - **Go (`.go`)**: `package` scopes, `go.mod` module paths, Struct Embedding, and Receiver methods.
    - **Rust (`.rs`)**: `mod` trees, `Cargo.toml`, `trait` definitions, `impl Trait for Struct`, and associated methods.
    - **Frontend SFC**: Full support for Vue 3 SFC (`.vue`) and Svelte (`.svelte`).
 
-6. **⚡ Sub-20ms Incremental Cache & Live Watch Mode (`incremental & watch`)**
+9. **⚡ Sub-20ms Incremental Cache & Live Watch Mode (`incremental & watch`)**
    - High-performance `mtime` and `SHA-256` content hashing skips AST re-parsing for unchanged files.
    - Automatically supports `.dsh/lens-cache.json` disk snapshots.
    - Built-in `LensWatcher` (100ms debounce) for live topological synchronization during code editing.

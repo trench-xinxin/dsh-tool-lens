@@ -8,7 +8,7 @@ import { Context } from "@deepseek-ai/cordis";
  */
 type CodeNodeKind = 'file' | 'component' | 'function' | 'class' | 'interface' | 'type' | 'variable';
 type CodeEdgeRelation = 'imports' | 'calls' | 'contains' | 'implements' | 'extends';
-type CodeGraphAction = 'dependencies' | 'call_graph' | 'impact' | 'circular' | 'metrics';
+type CodeGraphAction = 'dependencies' | 'call_graph' | 'impact' | 'circular' | 'metrics' | 'path' | 'unused' | 'lint';
 interface CodeGraphNode {
   /** Unique composite identifier: e.g., `src/index.ts` or `src/index.ts#apply:10` */
   id: string;
@@ -77,6 +77,44 @@ interface ImpactTiers {
   /** Tier 2: Upstream files that transitively import this module */
   transitiveImporters: CodeGraphNode[];
 }
+/** Shortest pathfinding result between two symbols or files */
+interface PathfindingResult {
+  fromNode: CodeGraphNode;
+  toNode: CodeGraphNode;
+  /** Sequence of node IDs in the shortest traversal chain */
+  path: string[];
+  /** Array of edges connecting the path nodes */
+  edges: CodeGraphEdge[];
+  /** Formatted step-by-step human-readable hops */
+  hops: string[];
+  isFound: boolean;
+}
+/** Dead code / Unreachable symbol analysis result */
+interface DeadCodeResult {
+  /** Files not imported or called by any active code */
+  orphanFiles: CodeGraphNode[];
+  /** Symbols with zero afferent callers or consumers */
+  unusedSymbols: CodeGraphNode[];
+  totalOrphans: number;
+  totalUnusedSymbols: number;
+}
+/** Architecture layer boundary rule */
+interface ArchitectureRule {
+  /** Glob or regex pattern describing the source layer (e.g., `src/views/**` or `views`) */
+  from: string;
+  /** Glob or regex pattern describing the forbidden target layer (e.g., `src/infra/**` or `db`) */
+  to: string;
+  /** Human-readable explanation of why this dependency is forbidden */
+  description?: string;
+}
+/** Detected architecture boundary violation */
+interface ArchitectureViolation {
+  fromNode: CodeGraphNode;
+  toNode: CodeGraphNode;
+  relation: CodeEdgeRelation;
+  violatedRule: ArchitectureRule;
+  reason: string;
+}
 interface CodeGraphResult {
   target: string;
   action: CodeGraphAction;
@@ -87,10 +125,15 @@ interface CodeGraphResult {
   circularCycles?: CircularCycle[];
   metrics?: ProjectMetrics;
   impactTiers?: ImpactTiers;
+  pathfinding?: PathfindingResult;
+  deadCode?: DeadCodeResult;
+  architectureViolations?: ArchitectureViolation[];
 }
 interface LensArgs {
   action: CodeGraphAction;
   target?: string;
+  to?: string;
+  rules?: ArchitectureRule[] | string;
   depth?: number;
   direction?: 'inbound' | 'outbound' | 'both';
   scope?: string;
@@ -533,6 +576,24 @@ interface ImpactAnalysisResult {
  */
 declare function analyzeImpact(graph: GraphStore, target: string, depth?: number): ImpactAnalysisResult;
 //#endregion
+//#region src/analytics/pathfinding.d.ts
+/**
+ * Explores and computes the shortest invocation path from source node to target node.
+ */
+declare function buildPathfindingResult(graph: GraphStore, fromQuery: string, toQuery: string, maxHops?: number): CodeGraphResult;
+//#endregion
+//#region src/analytics/deadcode.d.ts
+/**
+ * Audits the codebase for orphan files and unreachable exported symbols.
+ */
+declare function buildUnusedResult(graph: GraphStore, scope?: string): CodeGraphResult;
+//#endregion
+//#region src/analytics/architecture.d.ts
+/**
+ * Checks all graph edges against architectural boundary and layer rules.
+ */
+declare function buildLintResult(graph: GraphStore, rawRules?: ArchitectureRule[] | string): CodeGraphResult;
+//#endregion
 //#region src/render/mermaid.d.ts
 /**
  * Generates a Mermaid flowchart string from graph nodes and edges.
@@ -622,7 +683,7 @@ declare const name = "tool-lens";
 /** Services required by this plugin. */
 declare const inject: string[];
 /** System prompt guidance describing the purpose and usage of the tool. */
-declare const LENS_PROMPT_TEXT = "Use the lens tool when you need to understand symbol relationships across files, tracking callers/callees, exploring module dependencies, auditing circular dependencies, evaluating architecture coupling metrics, or measuring the blast radius of refactoring.";
+declare const LENS_PROMPT_TEXT = "Use the lens tool when you need to understand symbol relationships across files, tracking callers/callees, exploring module dependencies, auditing circular dependencies, evaluating architecture coupling metrics, tracing shortest call paths, discovering dead code, or measuring the blast radius of refactoring.";
 /** Plugin configuration schema. */
 interface Config {
   /** Maximum default graph traversal depth (default: 3). */
@@ -640,4 +701,4 @@ declare const Config: Schema<Config>;
  */
 declare function apply(ctx: Context, config?: Config): void;
 //#endregion
-export { CacheSnapshot, CircularAnalysisResult, CircularCycle, CodeAnalyzer, CodeEdgeRelation, CodeGraphAction, CodeGraphEdge, CodeGraphNode, CodeGraphResult, CodeNodeKind, Config, ConfigParser, DriverRegistry, FileDeltaStatus, FileIndexCache, GoLanguageDriver, GraphStore, ImpactAnalysisResult, ImpactTiers, IncrementalCacheStore, IncrementalIndexStats, JavaLanguageDriver, LENS_PROMPT_TEXT, LanguageDriver, LensArgs, LensWatcher, ModuleMetric, ParsedCallDef, ParsedHeritageDef, ParsedImportDef, ParsedSourceResult, ParsedSymbolDef, PathMappingRule, ProjectMetrics, PythonLanguageDriver, RustLanguageDriver, SFCExtractionResult, SFCLanguageDriver, SUPPORTED_EXTENSIONS, TSLanguageDriver, TSParser, TopHub, WatcherOptions, analyzeCircularDependencies, analyzeImpact, analyzeProjectMetrics, apply, buildCircularResult, buildMetricsResult, extractSFCBlocks, formatGraphMarkdown, generateMermaidDiagram, inject, kebabToPascal, name, parseGoSource, parseJavaSource, parsePythonSource, parseRustSource, presentLensCall, presentLensResult, resolveModulePath };
+export { ArchitectureRule, ArchitectureViolation, CacheSnapshot, CircularAnalysisResult, CircularCycle, CodeAnalyzer, CodeEdgeRelation, CodeGraphAction, CodeGraphEdge, CodeGraphNode, CodeGraphResult, CodeNodeKind, Config, ConfigParser, DeadCodeResult, DriverRegistry, FileDeltaStatus, FileIndexCache, GoLanguageDriver, GraphStore, ImpactAnalysisResult, ImpactTiers, IncrementalCacheStore, IncrementalIndexStats, JavaLanguageDriver, LENS_PROMPT_TEXT, LanguageDriver, LensArgs, LensWatcher, ModuleMetric, ParsedCallDef, ParsedHeritageDef, ParsedImportDef, ParsedSourceResult, ParsedSymbolDef, PathMappingRule, PathfindingResult, ProjectMetrics, PythonLanguageDriver, RustLanguageDriver, SFCExtractionResult, SFCLanguageDriver, SUPPORTED_EXTENSIONS, TSLanguageDriver, TSParser, TopHub, WatcherOptions, analyzeCircularDependencies, analyzeImpact, analyzeProjectMetrics, apply, buildCircularResult, buildLintResult, buildMetricsResult, buildPathfindingResult, buildUnusedResult, extractSFCBlocks, formatGraphMarkdown, generateMermaidDiagram, inject, kebabToPascal, name, parseGoSource, parseJavaSource, parsePythonSource, parseRustSource, presentLensCall, presentLensResult, resolveModulePath };

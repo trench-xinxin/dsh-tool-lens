@@ -51,14 +51,23 @@ npx @trench-xinxin/dsh-tool-lens "使用 lens 工具审计项目中的循环依�
    - 基于 Tarjan 强连通分量与 DFS 染色算法，一键检测所有闭合环路（如 `A -> B -> C -> A`）。
    - 输出环路链路与受波及文件清单，规避运行时初始化死锁与内存泄露。
 
-5. **🌍 多语言生态驱动全景支持 (`Java / Python / Go / Rust / TS / SFC`)**
+5. **🧭 最短调用路径寻路 (`action: path`)**
+   - 基于双向 BFS 算法，秒级探查两点间（`target` -> `to`）的最短跨模块执行轨迹与调用通路。
+
+6. **🧹 孤岛死代码与无引用符号审计 (`action: unused`)**
+   - 自动识别系统入口，全图审计入度 $Ca = 0$ 的不可达导出符号与孤岛文件，指导安全重构。
+
+7. **🛡 架构分层防腐边界校验 (`action: lint`)**
+   - 支持自定义分层规则（如 `views/**` 禁止直接调用 `infra/**`），一键拦截架构违规调用。
+
+8. **🌍 多语言生态驱动全景支持 (`Java / Python / Go / Rust / TS / SFC`)**
    - **Java (`.java`)**：支持 `package`、Maven/Gradle 结构、`class`、`interface`、`extends` 继承、`implements` 接口实现与类静态/实例方法调用。
    - **Python (`.py`)**：支持 `def`、`class` 继承、`self.method()` 及相对/绝对包导入分析。
    - **Go (`.go`)**：支持 `package` 作用域、`go.mod` 模块路径、Struct Embedding 与 Receiver 成员方法。
    - **Rust (`.rs`)**：支持 `mod` 树、`Cargo.toml`、`trait` 定义、`impl Trait for Struct` 特质实现与关联方法。
    - **前端 SFC**：支持 Vue 3 SFC (`.vue`) 与 Svelte (`.svelte`)。
 
-6. **⚡ 毫秒级增量缓存与实时 Watch 模式 (`incremental & watch`)**
+9. **⚡ 毫秒级增量缓存与实时 Watch 模式 (`incremental & watch`)**
    - 基于 `mtime` 与 `SHA-256` 内容哈希，二次查询未修改文件 100% 命中缓存，实现毫秒级响应（< 20ms）。
    - 自动支持 `.dsh/lens-cache.json` 磁盘快照持久化。
    - 提供 `LensWatcher` 100ms 防抖监听，源码变动时自动热同步图谱。

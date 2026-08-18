@@ -14,7 +14,15 @@ export type CodeNodeKind =
 
 export type CodeEdgeRelation = 'imports' | 'calls' | 'contains' | 'implements' | 'extends'
 
-export type CodeGraphAction = 'dependencies' | 'call_graph' | 'impact' | 'circular' | 'metrics'
+export type CodeGraphAction =
+  | 'dependencies'
+  | 'call_graph'
+  | 'impact'
+  | 'circular'
+  | 'metrics'
+  | 'path'
+  | 'unused'
+  | 'lint'
 
 export interface CodeGraphNode {
   /** Unique composite identifier: e.g., `src/index.ts` or `src/index.ts#apply:10` */
@@ -91,6 +99,48 @@ export interface ImpactTiers {
   transitiveImporters: CodeGraphNode[]
 }
 
+/** Shortest pathfinding result between two symbols or files */
+export interface PathfindingResult {
+  fromNode: CodeGraphNode
+  toNode: CodeGraphNode
+  /** Sequence of node IDs in the shortest traversal chain */
+  path: string[]
+  /** Array of edges connecting the path nodes */
+  edges: CodeGraphEdge[]
+  /** Formatted step-by-step human-readable hops */
+  hops: string[]
+  isFound: boolean
+}
+
+/** Dead code / Unreachable symbol analysis result */
+export interface DeadCodeResult {
+  /** Files not imported or called by any active code */
+  orphanFiles: CodeGraphNode[]
+  /** Symbols with zero afferent callers or consumers */
+  unusedSymbols: CodeGraphNode[]
+  totalOrphans: number
+  totalUnusedSymbols: number
+}
+
+/** Architecture layer boundary rule */
+export interface ArchitectureRule {
+  /** Glob or regex pattern describing the source layer (e.g., `src/views/**` or `views`) */
+  from: string
+  /** Glob or regex pattern describing the forbidden target layer (e.g., `src/infra/**` or `db`) */
+  to: string
+  /** Human-readable explanation of why this dependency is forbidden */
+  description?: string
+}
+
+/** Detected architecture boundary violation */
+export interface ArchitectureViolation {
+  fromNode: CodeGraphNode
+  toNode: CodeGraphNode
+  relation: CodeEdgeRelation
+  violatedRule: ArchitectureRule
+  reason: string
+}
+
 export interface CodeGraphResult {
   target: string
   action: CodeGraphAction
@@ -101,11 +151,16 @@ export interface CodeGraphResult {
   circularCycles?: CircularCycle[]
   metrics?: ProjectMetrics
   impactTiers?: ImpactTiers
+  pathfinding?: PathfindingResult
+  deadCode?: DeadCodeResult
+  architectureViolations?: ArchitectureViolation[]
 }
 
 export interface LensArgs {
   action: CodeGraphAction
   target?: string
+  to?: string
+  rules?: ArchitectureRule[] | string
   depth?: number
   direction?: 'inbound' | 'outbound' | 'both'
   scope?: string
