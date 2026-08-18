@@ -4,6 +4,13 @@
 
 ---
 
+## [1.3.4] - 2026-08-18
+
+### 🩹 补齐运行时 dependencies 声明 (Fixes)
+- 在 `package.json` 的 `dependencies` 中显式引入 `@deepseek-ai/schemastery`、`@deepseek-ai/dsh-tools` 与 `@deepseek-ai/cordis`，确保 `npx` 独立下载在临时隔离环境时能够正常加载依赖。
+
+---
+
 ## [1.3.3] - 2026-08-18
 
 ### 🩹 CLI 启动别名与脚本对齐 (Fixes)
