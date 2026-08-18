@@ -3,6 +3,8 @@
  * @module @trench-xinxin/dsh-tool-lens/analytics/api-contracts
  */
 
+import { readFileSync } from 'node:fs'
+import { isAbsolute, resolve } from 'node:path'
 import type { GraphStore } from '../core/graph.ts'
 import type {
   ApiContractMatch,
@@ -40,87 +42,116 @@ export function normalizeApiPath(path: string): string {
 }
 
 /**
- * Scans all files in the indexed workspace to match frontend client calls to backend server handlers.
+ * Scans files in the indexed workspace to match frontend client calls to backend server handlers.
  */
 export function buildApiContractsResult(
   graph: GraphStore,
-  fileSources?: Map<string, string>,
+  workspaceRootOrFiles?: string | Map<string, string>,
+  explicitFileSources?: Map<string, string>,
 ): CodeGraphResult {
   const clientCalls: ExtractedClientApiCall[] = []
   const serverEndpoints: ExtractedServerEndpoint[] = []
 
-  if (fileSources) {
-    for (const [filePath, content] of fileSources.entries()) {
-      const lines = content.split(/\r?\n/)
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i]!
-        const lineNum = i + 1
+  let workspaceRoot: string | undefined
+  let fileSources: Map<string, string> | undefined
 
-        // 1. Frontend Client Requests (fetch, axios, request)
-        // Matches: fetch('/api/users'), axios.get('/api/users'), request.post('/api/orders')
-        const clientMatch = line.match(
-          /\b(?:axios\.(get|post|put|delete|patch)|request\.(get|post|put|delete|patch)|fetch)\s*\(\s*['"`]([^'"`]+)['"`]/i,
-        )
-        if (clientMatch) {
-          const method = (clientMatch[1] || clientMatch[2] || 'GET').toUpperCase()
-          const url = clientMatch[3]!
-          if (url.startsWith('/') || url.startsWith('http')) {
-            clientCalls.push({
-              filePath,
-              url,
-              method,
-              line: lineNum,
-            })
-          }
-        }
+  if (workspaceRootOrFiles instanceof Map) {
+    fileSources = workspaceRootOrFiles
+  } else if (typeof workspaceRootOrFiles === 'string') {
+    workspaceRoot = workspaceRootOrFiles
+    fileSources = explicitFileSources
+  }
 
-        // 2. Java Spring Routing: @GetMapping("/api/users"), @PostMapping("/api/orders"), @RequestMapping("/api/...")
-        const springMatch = line.match(
-          /@(?:(Get|Post|Put|Delete|Patch)Mapping|RequestMapping)\s*\(\s*(?:value\s*=\s*)?["']([^"']+)["']/i,
-        )
-        if (springMatch) {
-          const method = (springMatch[1] || 'ALL').toUpperCase()
-          const url = springMatch[2]!
-          serverEndpoints.push({
+  const sourcesToScan = new Map<string, string>()
+
+  if (fileSources && fileSources.size > 0) {
+    for (const [p, content] of fileSources.entries()) {
+      sourcesToScan.set(p, content)
+    }
+  } else if (workspaceRoot) {
+    // Read sources from graph files on disk
+    for (const node of graph.getAllNodes()) {
+      if (node.kind === 'file' || node.kind === 'component') {
+        try {
+          const absPath = isAbsolute(node.filePath)
+            ? node.filePath
+            : resolve(workspaceRoot, node.filePath)
+          const content = readFileSync(absPath, 'utf8')
+          sourcesToScan.set(node.filePath, content)
+        } catch {}
+      }
+    }
+  }
+
+  for (const [filePath, content] of sourcesToScan.entries()) {
+    const lines = content.split(/\r?\n/)
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!
+      const lineNum = i + 1
+
+      // 1. Frontend Client Requests (fetch, axios, request, http)
+      const clientMatch = line.match(
+        /\b(?:axios\.(get|post|put|delete|patch)|request\.(get|post|put|delete|patch)|http\.(get|post|put|delete|patch)|fetch)\s*\(\s*['"`]([^'"`]+)['"`]/i,
+      )
+      if (clientMatch) {
+        const method = (clientMatch[1] || clientMatch[2] || clientMatch[3] || 'GET').toUpperCase()
+        const url = clientMatch[4]!
+        if (url.startsWith('/') || url.startsWith('http') || url.includes('/api/')) {
+          clientCalls.push({
             filePath,
             url,
             method,
-            handlerSymbolName: `Handler:${lineNum}`,
             line: lineNum,
           })
         }
+      }
 
-        // 3. Python FastAPI / Flask: @app.get("/api/users"), @router.post("/api/orders")
-        const pyMatch = line.match(
-          /@(?:app|router)\.(get|post|put|delete|patch)\s*\(\s*["']([^"']+)["']/i,
-        )
-        if (pyMatch) {
-          const method = pyMatch[1]!.toUpperCase()
-          const url = pyMatch[2]!
-          serverEndpoints.push({
-            filePath,
-            url,
-            method,
-            handlerSymbolName: `Handler:${lineNum}`,
-            line: lineNum,
-          })
-        }
+      // 2. Java Spring Routing: @GetMapping("/api/users"), @PostMapping("/api/orders"), @RequestMapping("/api/...")
+      const springMatch = line.match(
+        /@(?:(Get|Post|Put|Delete|Patch)Mapping|RequestMapping)\s*\(\s*(?:(?:value|path)\s*=\s*)?["']([^"']+)["']/i,
+      )
+      if (springMatch) {
+        const method = (springMatch[1] || 'ALL').toUpperCase()
+        const url = springMatch[2]!
+        serverEndpoints.push({
+          filePath,
+          url,
+          method,
+          handlerSymbolName: `Handler:${lineNum}`,
+          line: lineNum,
+        })
+      }
 
-        // 4. Go Gin / Echo: r.GET("/api/users", handler), e.POST("/api/orders", ...)
-        const goMatch = line.match(
-          /\b(?:r|router|e|app|group)\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*["']([^"']+)["']/i,
-        )
-        if (goMatch) {
-          const method = goMatch[1]!.toUpperCase()
-          const url = goMatch[2]!
-          serverEndpoints.push({
-            filePath,
-            url,
-            method,
-            handlerSymbolName: `Handler:${lineNum}`,
-            line: lineNum,
-          })
-        }
+      // 3. Python FastAPI / Flask: @app.get("/api/users"), @router.post("/api/orders")
+      const pyMatch = line.match(
+        /@(?:app|router|api)\.(get|post|put|delete|patch)\s*\(\s*["']([^"']+)["']/i,
+      )
+      if (pyMatch) {
+        const method = pyMatch[1]!.toUpperCase()
+        const url = pyMatch[2]!
+        serverEndpoints.push({
+          filePath,
+          url,
+          method,
+          handlerSymbolName: `Handler:${lineNum}`,
+          line: lineNum,
+        })
+      }
+
+      // 4. Go Gin / Echo: r.GET("/api/users", handler), e.POST("/api/orders", ...)
+      const goMatch = line.match(
+        /\b(?:r|router|e|app|group|engine)\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*["']([^"']+)["']/i,
+      )
+      if (goMatch) {
+        const method = goMatch[1]!.toUpperCase()
+        const url = goMatch[2]!
+        serverEndpoints.push({
+          filePath,
+          url,
+          method,
+          handlerSymbolName: `Handler:${lineNum}`,
+          line: lineNum,
+        })
       }
     }
   }

@@ -4,6 +4,16 @@
 
 ---
 
+## [2.0.1] - 2026-08-18
+
+### 🩹 工作区会话上下文探测与 Monorepo 路径容错增强 (Fixes & Enhancements)
+- **多工作区 Session CWD 自动识别**：优先从会话执行上下文（`exec.cwd`、`ctx.fs`、`ctx.session`）解析真实工作目录，避免 DSH Web 切换项目时回退到插件启动目录；
+- **全栈 API 契约自动磁盘扫描**：`action: api_contracts` 自动遍历扫描工作区源文件，提取前后端 HTTP 路由与请求并建立跨语言契约图谱；
+- **Monorepo 路径后缀匹配优化**：`findNodes` 清洗前导 `/`、`./` 符号，并在全字后缀不匹配时提供模糊包含兜底；
+- **`dependencies` 动作免 target 概览**：当未指定 `target` 时自动返回全工作区顶层模块依赖概览，避免直接报错。
+
+---
+
 ## [2.0.0] - 2026-08-18
 
 ### 🌟 Phase 7 架构切片、Git Diff 增量影响审计与跨前后端 API 契约追踪 (Major Milestone Release)

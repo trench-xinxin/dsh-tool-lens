@@ -180,6 +180,21 @@ const LENS_OUTPUT_SCHEMA = {
   },
 } as const
 
+function resolveWorkspaceRoot(ctx: Context, exec?: any): string {
+  if (exec?.cwd && typeof exec.cwd === 'string' && exec.cwd.trim().length > 0) {
+    return exec.cwd.trim()
+  }
+  const fsService = (ctx as any).get?.('fs')
+  if (fsService?.root?.displayPath && typeof fsService.root.displayPath === 'string') {
+    return fsService.root.displayPath
+  }
+  const sessionService = (ctx as any).get?.('session')
+  if (sessionService?.cwd && typeof sessionService.cwd === 'string') {
+    return sessionService.cwd
+  }
+  return process.cwd()
+}
+
 /**
  * Register the `lens` tool and its system-prompt guidance.
  * @param ctx - Cordis Context with injected services.
@@ -195,7 +210,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   const analyzer = new CodeAnalyzer()
 
   if (enableWatch) {
-    const workspaceRoot = process.cwd()
+    const workspaceRoot = resolveWorkspaceRoot(ctx)
     analyzer.createWatcher(workspaceRoot)
   }
 
@@ -272,13 +287,13 @@ export function apply(ctx: Context, config: Config = {}): void {
       presentCall: (args: LensArgs) => presentLensCall(args),
       presentResult: (args: LensArgs, res: { content: readonly { type: string; text?: string }[]; isError: boolean }) =>
         presentLensResult(args, res),
-      async execute(args: LensArgs, options: { signal?: AbortSignal }): Promise<CodeGraphResult> {
+      async execute(args: LensArgs, exec: any): Promise<CodeGraphResult> {
         const lensArgs = args as LensArgs
-        const workspaceRoot = process.cwd()
+        const workspaceRoot = resolveWorkspaceRoot(ctx, exec)
         const scanDir = lensArgs.scope ? resolve(workspaceRoot, lensArgs.scope) : workspaceRoot
 
         // AST Indexing (Incremental with cache)
-        const store = await analyzer.indexDirectory(scanDir, options.signal, {
+        const store = await analyzer.indexDirectory(scanDir, exec?.signal, {
           forceReindex: !useCache,
         })
 
@@ -327,7 +342,7 @@ export function apply(ctx: Context, config: Config = {}): void {
 
         // 7. Action: Full-Stack Cross-Language API Contracts
         if (lensArgs.action === 'api_contracts') {
-          return buildApiContractsResult(store)
+          return buildApiContractsResult(store, workspaceRoot)
         }
 
         // 8. Action: Pathfinding Shortest Invocation Chain
@@ -347,6 +362,23 @@ export function apply(ctx: Context, config: Config = {}): void {
 
         // 9. Actions requiring single target matching (impact, dependencies, call_graph)
         if (!targetQuery) {
+          if (lensArgs.action === 'dependencies') {
+            // Provide global workspace dependency overview when target is omitted
+            const allFiles = store.getAllNodes().filter((n) => n.kind === 'file' || n.kind === 'component')
+            const displayFiles = allFiles.slice(0, 20)
+            const fileIds = new Set(displayFiles.map((n) => n.id))
+            const fileEdges = store.getAllEdges().filter((e) => fileIds.has(e.from) && fileIds.has(e.to))
+
+            return {
+              target: 'workspace-overview',
+              action: 'dependencies',
+              rootNodes: displayFiles.slice(0, 5),
+              nodes: displayFiles,
+              edges: fileEdges,
+              summary: `Overview of workspace dependencies across ${allFiles.length} file(s). (Tip: Provide 'target' file/symbol to drill into specific dependencies).`,
+            }
+          }
+
           return {
             target: '',
             action: lensArgs.action,

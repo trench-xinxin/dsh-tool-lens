@@ -668,9 +668,9 @@ interface ExtractedServerEndpoint {
  */
 declare function normalizeApiPath(path: string): string;
 /**
- * Scans all files in the indexed workspace to match frontend client calls to backend server handlers.
+ * Scans files in the indexed workspace to match frontend client calls to backend server handlers.
  */
-declare function buildApiContractsResult(graph: GraphStore, fileSources?: Map<string, string>): CodeGraphResult;
+declare function buildApiContractsResult(graph: GraphStore, workspaceRootOrFiles?: string | Map<string, string>, explicitFileSources?: Map<string, string>): CodeGraphResult;
 //#endregion
 //#region src/render/mermaid.d.ts
 /**

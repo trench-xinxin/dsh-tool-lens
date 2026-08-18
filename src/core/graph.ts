@@ -138,31 +138,37 @@ export class GraphStore {
   findNodes(query: string): CodeGraphNode[] {
     const raw = query.trim()
     if (!raw) return []
-    const normalized = raw.toLowerCase()
+    const cleanQuery = raw.replace(/^[./\\]+/, '').replace(/\\/g, '/')
+    const normalized = cleanQuery.toLowerCase()
+    const rawNorm = raw.toLowerCase()
     const exactMatches: CodeGraphNode[] = []
     const fileSuffixMatches: CodeGraphNode[] = []
     const symbolSuffixMatches: CodeGraphNode[] = []
     const pathFallbackMatches: CodeGraphNode[] = []
+    const fuzzyInclusionMatches: CodeGraphNode[] = []
 
     for (const node of this.nodes.values()) {
       const nodeId = node.id.toLowerCase()
       const nodeName = node.name.toLowerCase()
-      const nodePath = node.filePath.toLowerCase()
+      const nodePath = node.filePath.toLowerCase().replace(/\\/g, '/')
 
       // 1. Exact ID / Name / FilePath match
-      if (nodeId === normalized || nodeName === normalized || nodePath === normalized) {
+      if (nodeId === normalized || nodeName === normalized || nodePath === normalized || nodeId === rawNorm || nodePath === rawNorm) {
         exactMatches.push(node)
         continue
       }
 
       // 2. Member method short-name match: e.g. target "analyzeSourceCode" matches "CodeAnalyzer.analyzeSourceCode"
-      if (nodeName.endsWith(`.${normalized}`) || nodeName.endsWith(`#${normalized}`)) {
+      if (nodeName.endsWith(`.${normalized}`) || nodeName.endsWith(`#${normalized}`) || nodeId.endsWith(`#${normalized}`)) {
         symbolSuffixMatches.push(node)
         continue
       }
 
-      // 3. File path suffix match on file/component nodes
-      if ((node.kind === 'file' || node.kind === 'component') && (nodePath.endsWith(`/${normalized}`) || nodePath === normalized)) {
+      // 3. File path suffix match on file/component nodes (e.g. "src/index.ts" matches "packages/core/src/index.ts")
+      if (
+        (node.kind === 'file' || node.kind === 'component') &&
+        (nodePath.endsWith(`/${normalized}`) || nodePath === normalized || nodePath.endsWith(`/${cleanQuery.toLowerCase()}`))
+      ) {
         fileSuffixMatches.push(node)
         continue
       }
@@ -172,21 +178,18 @@ export class GraphStore {
         pathFallbackMatches.push(node)
         continue
       }
+
+      // 5. Fuzzy inclusion
+      if (nodeName.includes(normalized) || nodePath.includes(normalized)) {
+        fuzzyInclusionMatches.push(node)
+      }
     }
 
-    if (exactMatches.length > 0) {
-      return exactMatches
-    }
-
-    if (fileSuffixMatches.length > 0) {
-      return fileSuffixMatches
-    }
-
-    if (symbolSuffixMatches.length > 0) {
-      return symbolSuffixMatches
-    }
-
-    return pathFallbackMatches
+    if (exactMatches.length > 0) return exactMatches
+    if (fileSuffixMatches.length > 0) return fileSuffixMatches
+    if (symbolSuffixMatches.length > 0) return symbolSuffixMatches
+    if (pathFallbackMatches.length > 0) return pathFallbackMatches
+    return fuzzyInclusionMatches
   }
 
   /**
