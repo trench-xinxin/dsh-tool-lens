@@ -4,6 +4,13 @@
 
 ---
 
+## [2.0.2] - 2026-08-18
+
+### 🩹 系统提示词 Code Mode 调用指引增强 (Fixes)
+- 强化 `LENS_PROMPT_TEXT` 系统提示词，向大模型明确注入 Code Mode (`run_code`) 下通过 `await tools.lens(...)` 直接调用的说明，防止大模型误写 `require('fs')` 或 `import` 导致沙箱环境权限拒绝。
+
+---
+
 ## [2.0.1] - 2026-08-18
 
 ### 🩹 工作区会话上下文探测与 Monorepo 路径容错增强 (Fixes & Enhancements)

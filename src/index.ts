@@ -57,8 +57,14 @@ export const name = 'tool-lens'
 export const inject = ['tools', 'systemPrompt']
 
 /** System prompt guidance describing the purpose and usage of the tool. */
-export const LENS_PROMPT_TEXT =
-  'Use the lens tool when you need to understand symbol relationships across files, tracking callers/callees, exploring module dependencies, auditing circular dependencies, evaluating architecture coupling metrics, tracing shortest call paths, discovering dead code, analyzing git diff changes, extracting domain architecture slices, connecting full-stack frontend-backend HTTP API contracts, or measuring the blast radius of refactoring.'
+export const LENS_PROMPT_TEXT = `
+Use the \`lens\` tool to understand symbol relationships, track callers/callees, explore file dependencies, audit circular references, evaluate coupling metrics, trace shortest call paths, detect dead code, analyze git diff changes, extract domain architecture slices, link full-stack API contracts, or evaluate refactoring blast radius.
+
+**How to call in Code Mode (\`run_code\`):**
+- Direct Node.js \`fs\`/\`path\` and \`import\`/\`require\` are restricted in the sandbox.
+- Instead, invoke Lens through the global SDK: \`await tools.lens({ action: 'impact', target: 'YourSymbol' })\`
+- Supported actions: \`dependencies\`, \`call_graph\`, \`impact\`, \`circular\`, \`metrics\`, \`path\`, \`unused\`, \`lint\`, \`diff_impact\`, \`slice\`, \`api_contracts\`.
+`.trim()
 
 /** Plugin configuration schema. */
 export interface Config {

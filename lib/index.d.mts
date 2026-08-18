@@ -761,7 +761,7 @@ declare const name = "tool-lens";
 /** Services required by this plugin. */
 declare const inject: string[];
 /** System prompt guidance describing the purpose and usage of the tool. */
-declare const LENS_PROMPT_TEXT = "Use the lens tool when you need to understand symbol relationships across files, tracking callers/callees, exploring module dependencies, auditing circular dependencies, evaluating architecture coupling metrics, tracing shortest call paths, discovering dead code, analyzing git diff changes, extracting domain architecture slices, connecting full-stack frontend-backend HTTP API contracts, or measuring the blast radius of refactoring.";
+declare const LENS_PROMPT_TEXT: string;
 /** Plugin configuration schema. */
 interface Config {
   /** Maximum default graph traversal depth (default: 3). */
