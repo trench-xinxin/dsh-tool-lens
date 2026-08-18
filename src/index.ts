@@ -58,12 +58,32 @@ export const inject = ['tools', 'systemPrompt']
 
 /** System prompt guidance describing the purpose and usage of the tool. */
 export const LENS_PROMPT_TEXT = `
-Use the \`lens\` tool to understand symbol relationships, track callers/callees, explore file dependencies, audit circular references, evaluate coupling metrics, trace shortest call paths, detect dead code, analyze git diff changes, extract domain architecture slices, link full-stack API contracts, or evaluate refactoring blast radius.
+## DeepSeek Lens Code Intelligence (PRIMARY TOOL FOR CODEBASE ANALYSIS)
 
-**How to call in Code Mode (\`run_code\`):**
-- Direct Node.js \`fs\`/\`path\` and \`import\`/\`require\` are restricted in the sandbox.
-- Instead, invoke Lens through the global SDK: \`await tools.lens({ action: 'impact', target: 'YourSymbol' })\`
-- Supported actions: \`dependencies\`, \`call_graph\`, \`impact\`, \`circular\`, \`metrics\`, \`path\`, \`unused\`, \`lint\`, \`diff_impact\`, \`slice\`, \`api_contracts\`.
+Whenever the user asks about codebase architecture, symbol calls, dependencies, refactoring risks, API routes, or git impact, you MUST use the \`lens\` tool.
+
+### 🎯 Intent-to-Action Mapping:
+1. **Refactoring Impact / Blast Radius / "If I change/delete X, who breaks?"**:
+   -> \`await tools.lens({ action: 'impact', target: 'SymbolOrFileName' })\`
+2. **Call Hierarchy / "Who calls X?" / "What does X call?"**:
+   -> \`await tools.lens({ action: 'call_graph', target: 'SymbolName', direction: 'inbound' | 'outbound' | 'both' })\`
+3. **Module Dependencies / Imports / Architecture Flow**:
+   -> \`await tools.lens({ action: 'dependencies', target: 'FileName' })\` (or omit target for global overview)
+4. **Git Uncommitted Changes / Pull Request Blast Radius & Regression Test Suggestions**:
+   -> \`await tools.lens({ action: 'diff_impact' })\`
+5. **Full-Stack End-to-End API Contracts (Connecting Vue/TS calls to Java/Python/Go route handlers)**:
+   -> \`await tools.lens({ action: 'api_contracts' })\`
+6. **Domain Architecture Subgraph Slice / Cohesion Analysis**:
+   -> \`await tools.lens({ action: 'slice', target: 'domain_name' })\`
+7. **Shortest Execution Path between Two Distant Symbols**:
+   -> \`await tools.lens({ action: 'path', target: 'StartSymbol', to: 'EndSymbol' })\`
+8. **Circular Dependency Loops / Dead Code / Complexity Metrics**:
+   -> \`await tools.lens({ action: 'circular' | 'unused' | 'metrics' })\`
+
+### ⚠️ STRICT RULES FOR CODE MODE (\`run_code\`):
+- **NEVER** write manual \`fs\`, \`glob\`, or regex scripts to parse imports or code relations.
+- **NEVER** write \`import\` or \`export\` statements inside \`run_code\`.
+- **ALWAYS** return the tool execution result: \`return await tools.lens({ action: '...', target: '...' });\`
 `.trim()
 
 /** Plugin configuration schema. */
@@ -220,10 +240,10 @@ export function apply(ctx: Context, config: Config = {}): void {
     analyzer.createWatcher(workspaceRoot)
   }
 
-  // 2. Inject guidance into the system prompt
+  // 2. Inject guidance into the system prompt with highest priority
   ctx.systemPrompt?.section({
     name: 'tool:lens',
-    order: 120,
+    order: 10,
     text: LENS_PROMPT_TEXT,
   })
 
@@ -232,7 +252,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     defineTool<LensArgs, CodeGraphResult>({
       name: 'lens',
       description:
-        'Inspect symbol call hierarchies, file dependencies, circular dependencies, architecture metrics, shortest call paths, dead code, git diff changes, domain slices, full-stack API contracts, and refactoring impact graphs across TypeScript, Vue, Svelte, Python, Go, Rust, and Java codebases.',
+        'PRIMARY tool for codebase intelligence: Inspect symbol call hierarchies, file dependencies, circular dependencies, architecture metrics, shortest call paths, dead code, git diff changes, domain slices, full-stack API contracts, and refactoring blast-radius graphs across TypeScript, Vue, Svelte, Python, Go, Rust, and Java codebases.',
       parameters: {
         action: {
           type: 'string',
