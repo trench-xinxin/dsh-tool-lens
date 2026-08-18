@@ -51,7 +51,8 @@ npx @trench-xinxin/dsh-tool-lens "使用 lens 工具审计项目中的循环依�
    - 基于 Tarjan 强连通分量与 DFS 染色算法，一键检测所有闭合环路（如 `A -> B -> C -> A`）。
    - 输出环路链路与受波及文件清单，规避运行时初始化死锁与内存泄露。
 
-5. **🌍 多语言生态驱动全景支持 (`Python / Go / Rust / TS / SFC`)**
+5. **🌍 多语言生态驱动全景支持 (`Java / Python / Go / Rust / TS / SFC`)**
+   - **Java (`.java`)**：支持 `package`、Maven/Gradle 结构、`class`、`interface`、`extends` 继承、`implements` 接口实现与类静态/实例方法调用。
    - **Python (`.py`)**：支持 `def`、`class` 继承、`self.method()` 及相对/绝对包导入分析。
    - **Go (`.go`)**：支持 `package` 作用域、`go.mod` 模块路径、Struct Embedding 与 Receiver 成员方法。
    - **Rust (`.rs`)**：支持 `mod` 树、`Cargo.toml`、`trait` 定义、`impl Trait for Struct` 特质实现与关联方法。

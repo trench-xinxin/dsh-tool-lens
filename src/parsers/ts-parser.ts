@@ -20,6 +20,7 @@ import type {
 import { ConfigParser, resolveModulePath, SUPPORTED_EXTENSIONS } from './config-parser.ts'
 import { DriverRegistry } from './driver.ts'
 import { parseGoSource } from './go-parser.ts'
+import { parseJavaSource } from './java-parser.ts'
 import type { ParsedSourceResult } from './python-parser.ts'
 import { parsePythonSource } from './python-parser.ts'
 import { parseRustSource } from './rust-parser.ts'
@@ -211,6 +212,11 @@ export class TSParser {
 
     if (relPath.endsWith('.rs')) {
       this.analyzeGenericParsedResult(relPath, content, rootDir, parseRustSource(content, relPath), autoLink)
+      return
+    }
+
+    if (relPath.endsWith('.java')) {
+      this.analyzeGenericParsedResult(relPath, content, rootDir, parseJavaSource(content, relPath), autoLink)
       return
     }
 
@@ -859,13 +865,14 @@ export class TSParser {
               targetFileSymbols?.get(call.calleeName)
           }
         } else {
-          // Tier 3: Namespace import call (e.g. Util.helper() where Util is import * as Util from './util')
-          const nsBinding = fileBindings.get(call.calleeObject)
-          if (nsBinding && nsBinding.isNamespace) {
-            const targetFileSymbols = this.fileSymbols.get(nsBinding.sourcePath)
+          // Tier 3: Imported Class method or Namespace call (e.g. PasswordEncoder.encode() or Util.helper())
+          const classOrNsBinding = fileBindings.get(call.calleeObject)
+          if (classOrNsBinding) {
+            const targetFileSymbols = this.fileSymbols.get(classOrNsBinding.sourcePath)
             targetNode =
-              targetFileSymbols?.get(call.calleeName) ||
-              targetFileSymbols?.get(`${nsBinding.importedName}.${call.calleeName}`)
+              targetFileSymbols?.get(`${classOrNsBinding.importedName}.${call.calleeName}`) ||
+              targetFileSymbols?.get(`${call.calleeObject}.${call.calleeName}`) ||
+              targetFileSymbols?.get(call.calleeName)
           }
         }
       }

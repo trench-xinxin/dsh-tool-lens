@@ -357,6 +357,12 @@ declare function parseGoSource(content: string, _relPath: string): ParsedSourceR
  */
 declare function parseRustSource(content: string, _relPath: string): ParsedSourceResult;
 //#endregion
+//#region src/parsers/java-parser.d.ts
+/**
+ * Parses Java source code into symbols, imports, heritages, and calls.
+ */
+declare function parseJavaSource(content: string, _relPath: string): ParsedSourceResult;
+//#endregion
 //#region src/parsers/driver.d.ts
 declare class TSLanguageDriver implements LanguageDriver {
   readonly name = "typescript";
@@ -381,6 +387,11 @@ declare class GoLanguageDriver implements LanguageDriver {
 declare class RustLanguageDriver implements LanguageDriver {
   readonly name = "rust";
   readonly extensions: readonly [".rs"];
+  canHandle(filePath: string): boolean;
+}
+declare class JavaLanguageDriver implements LanguageDriver {
+  readonly name = "java";
+  readonly extensions: readonly [".java"];
   canHandle(filePath: string): boolean;
 }
 declare class DriverRegistry {
@@ -629,4 +640,4 @@ declare const Config: Schema<Config>;
  */
 declare function apply(ctx: Context, config?: Config): void;
 //#endregion
-export { CacheSnapshot, CircularAnalysisResult, CircularCycle, CodeAnalyzer, CodeEdgeRelation, CodeGraphAction, CodeGraphEdge, CodeGraphNode, CodeGraphResult, CodeNodeKind, Config, ConfigParser, DriverRegistry, FileDeltaStatus, FileIndexCache, GoLanguageDriver, GraphStore, ImpactAnalysisResult, ImpactTiers, IncrementalCacheStore, IncrementalIndexStats, LENS_PROMPT_TEXT, LanguageDriver, LensArgs, LensWatcher, ModuleMetric, ParsedCallDef, ParsedHeritageDef, ParsedImportDef, ParsedSourceResult, ParsedSymbolDef, PathMappingRule, ProjectMetrics, PythonLanguageDriver, RustLanguageDriver, SFCExtractionResult, SFCLanguageDriver, SUPPORTED_EXTENSIONS, TSLanguageDriver, TSParser, TopHub, WatcherOptions, analyzeCircularDependencies, analyzeImpact, analyzeProjectMetrics, apply, buildCircularResult, buildMetricsResult, extractSFCBlocks, formatGraphMarkdown, generateMermaidDiagram, inject, kebabToPascal, name, parseGoSource, parsePythonSource, parseRustSource, presentLensCall, presentLensResult, resolveModulePath };
+export { CacheSnapshot, CircularAnalysisResult, CircularCycle, CodeAnalyzer, CodeEdgeRelation, CodeGraphAction, CodeGraphEdge, CodeGraphNode, CodeGraphResult, CodeNodeKind, Config, ConfigParser, DriverRegistry, FileDeltaStatus, FileIndexCache, GoLanguageDriver, GraphStore, ImpactAnalysisResult, ImpactTiers, IncrementalCacheStore, IncrementalIndexStats, JavaLanguageDriver, LENS_PROMPT_TEXT, LanguageDriver, LensArgs, LensWatcher, ModuleMetric, ParsedCallDef, ParsedHeritageDef, ParsedImportDef, ParsedSourceResult, ParsedSymbolDef, PathMappingRule, ProjectMetrics, PythonLanguageDriver, RustLanguageDriver, SFCExtractionResult, SFCLanguageDriver, SUPPORTED_EXTENSIONS, TSLanguageDriver, TSParser, TopHub, WatcherOptions, analyzeCircularDependencies, analyzeImpact, analyzeProjectMetrics, apply, buildCircularResult, buildMetricsResult, extractSFCBlocks, formatGraphMarkdown, generateMermaidDiagram, inject, kebabToPascal, name, parseGoSource, parseJavaSource, parsePythonSource, parseRustSource, presentLensCall, presentLensResult, resolveModulePath };

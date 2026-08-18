@@ -4,6 +4,23 @@
 
 ---
 
+## [1.2.0] - 2026-08-18
+
+### ☕ 企业级 Java 语言 AST 驱动接入 (Phase 5.5)
+
+#### ✨ 新增特性 (Features)
+- **Java 语言 AST 驱动 (`.java`)**:
+  - 支持 `package com.example.service;` 包声明与 Maven / Gradle（`src/main/java/`）标准目录结构解析；
+  - 支持类单一/通配导入（`import com.example.model.User;` / `import static ...`）；
+  - 支持类（`class`）、接口（`interface`）、枚举（`enum`）定义提取；
+  - 支持 `extends BaseService` 继承（`relation: 'extends'`）与 `implements IUserService, Serializable` 接口实现（`relation: 'implements'`）；
+  - 支持类内方法提取为 `ClassName.methodName`，建立 `contains` 边，并精准提取 `this.init()` 与 `PasswordEncoder.encode()` 跨类方法调用；
+  - 兼容 Spring 常用注解（`@Service`, `@Autowired`, `@Override` 等）。
+- **跨文件类静态/实例方法调用消歧增强**:
+  - 增强 `TSParser.linkAllCalls`，通过具名导入绑定的类名（如 `PasswordEncoder.encode()`）精确定位目标文件中的成员方法。
+
+---
+
 ## [1.1.0] - 2026-08-18
 
 ### 🌍 多语言生态驱动发布：Python / Go / Rust AST 接入 (Phase 5)

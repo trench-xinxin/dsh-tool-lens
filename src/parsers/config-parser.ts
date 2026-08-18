@@ -12,6 +12,7 @@ export const SUPPORTED_EXTENSIONS = [
   '.py',
   '.go',
   '.rs',
+  '.java',
 ]
 
 export interface PathMappingRule {
@@ -173,6 +174,12 @@ export function resolveModulePath(
     if (rustResolved) return rustResolved
   }
 
+  // 4. Java package import (e.g. import com.example.model.User)
+  if (currentRelPath.endsWith('.java')) {
+    const javaResolved = resolveJavaModulePath(currentRelPath, moduleSpecifier, rootDir, knownFiles)
+    if (javaResolved) return javaResolved
+  }
+
   // 4. Relative paths (./ or ../)
   if (moduleSpecifier.startsWith('./') || moduleSpecifier.startsWith('../')) {
     const rawTarget = resolve(currentDir, moduleSpecifier)
@@ -285,6 +292,39 @@ function resolvePythonModulePath(
   }
 
   return `${relFromRoot}.py`
+}
+
+function resolveJavaModulePath(
+  currentRelPath: string,
+  specifier: string,
+  rootDir: string,
+  knownFiles?: Iterable<string>,
+): string | null {
+  // Strip wildcard if any
+  const cleanSpec = specifier.replace(/\.\*$/, '')
+  const relPath = cleanSpec.replace(/\./g, '/')
+
+  // 1. Maven / Gradle standard path: src/main/java/com/example/...
+  const candidateMaven = join(rootDir, 'src/main/java', relPath)
+  const exactMaven = probeFileVariants(candidateMaven, ['.java'])
+  if (exactMaven) return normalize(relative(rootDir, exactMaven))
+
+  // 2. Direct root path: com/example/...
+  const candidateRoot = join(rootDir, relPath)
+  const exactRoot = probeFileVariants(candidateRoot, ['.java'])
+  if (exactRoot) return normalize(relative(rootDir, exactRoot))
+
+  // 3. Match against knownFiles
+  if (knownFiles) {
+    const candidateJava = `${relPath}.java`
+    for (const known of knownFiles) {
+      if (known.endsWith(candidateJava) || known.endsWith(`/${candidateJava}`)) {
+        return known
+      }
+    }
+  }
+
+  return `${relPath}.java`
 }
 
 function resolveRustModulePath(

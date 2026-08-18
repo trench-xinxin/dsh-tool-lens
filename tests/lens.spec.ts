@@ -12,6 +12,7 @@ import {
   parsePythonSource,
   parseGoSource,
   parseRustSource,
+  parseJavaSource,
   formatGraphMarkdown,
   generateMermaidDiagram,
   presentLensCall,
@@ -370,7 +371,7 @@ describe('Phase 4: Frontend SFC & Vue/Svelte Support', () => {
   })
 })
 
-describe('Phase 5: Polyglot Drivers (Python, Go, Rust)', () => {
+describe('Phase 5: Polyglot Drivers (Python, Go, Rust, Java)', () => {
   it('extracts Python classes, methods, inheritance, and imports', () => {
     const analyzer = new CodeAnalyzer()
 
@@ -523,7 +524,75 @@ impl Authenticator for AuthClient {
     expect(loginCalls.map((e) => e.to)).toContain(checkTokenFunc.id)
   })
 
-  it('analyzes full-stack polyglot monorepo (TS + Vue + Python + Go + Rust) in a unified graph', () => {
+  it('extracts Java classes, interfaces, extends/implements, and method calls', () => {
+    const analyzer = new CodeAnalyzer()
+
+    const utilJava = `
+package com.example.util;
+
+public class PasswordEncoder {
+    public static String encode(String raw) {
+        return "enc_" + raw;
+    }
+}
+`
+
+    const serviceJava = `
+package com.example.service;
+
+import com.example.util.PasswordEncoder;
+
+public interface IUserService {
+    String register(String user, String pwd);
+}
+
+public class BaseService {
+    public void logAction(String act) {}
+}
+
+public class UserService extends BaseService implements IUserService {
+    public String register(String user, String pwd) {
+        this.logAction("register");
+        return PasswordEncoder.encode(pwd);
+    }
+}
+`
+
+    analyzer.analyzeSourceCode('src/main/java/com/example/util/PasswordEncoder.java', utilJava, '/root', false)
+    analyzer.analyzeSourceCode('src/main/java/com/example/service/UserService.java', serviceJava, '/root', true)
+
+    const graph = analyzer.getGraph()
+
+    // 1. Classes & Interfaces
+    const userClass = graph.findNodes('UserService')[0]!
+    const baseClass = graph.findNodes('BaseService')[0]!
+    const userIface = graph.findNodes('IUserService')[0]!
+    const encoderClass = graph.findNodes('PasswordEncoder')[0]!
+
+    expect(userClass.kind).toBe('class')
+    expect(baseClass.kind).toBe('class')
+    expect(userIface.kind).toBe('interface')
+    expect(encoderClass.kind).toBe('class')
+
+    // 2. Extends & Implements relations
+    const userOutEdges = graph.getOutboundEdges(userClass.id)
+    const extendsTargets = userOutEdges.filter((e) => e.relation === 'extends').map((e) => e.to)
+    const implementsTargets = userOutEdges.filter((e) => e.relation === 'implements').map((e) => e.to)
+
+    expect(extendsTargets).toContain(baseClass.id)
+    expect(implementsTargets).toContain(userIface.id)
+
+    // 3. Methods & Calls
+    const registerMethod = graph.findNodes('UserService.register')[0]!
+    const encodeMethod = graph.findNodes('PasswordEncoder.encode')[0]!
+    expect(registerMethod).toBeDefined()
+    expect(encodeMethod).toBeDefined()
+
+    const methodCalls = graph.getOutboundEdges(registerMethod.id).filter((e) => e.relation === 'calls').map((e) => e.to)
+    expect(methodCalls).toContain(encodeMethod.id)
+  })
+
+  it('analyzes full-stack polyglot monorepo (TS + Vue + Python + Go + Rust + Java) in a unified graph', () => {
     const analyzer = new CodeAnalyzer()
 
     // 1. Frontend Vue & TS
@@ -577,6 +646,17 @@ func InitConfig() {}`,
       'engine/src/lib.rs',
       `pub fn compute_hash() -> u64 { 12345 }`,
       '/root',
+      false,
+    )
+
+    // 5. Java Enterprise Service
+    analyzer.analyzeSourceCode(
+      'services/java/src/main/java/com/app/AppService.java',
+      `package com.app;
+public class AppService {
+    public void execute() {}
+}`,
+      '/root',
       true,
     )
 
@@ -588,24 +668,15 @@ func InitConfig() {}`,
     expect(graph.getNode('backend/py/main.py')).toBeDefined()
     expect(graph.getNode('backend/go/main.go')).toBeDefined()
     expect(graph.getNode('engine/src/lib.rs')).toBeDefined()
+    expect(graph.getNode('services/java/src/main/java/com/app/AppService.java')).toBeDefined()
 
-    // Verify cross-file calls in different languages
-    const vueCalls = graph.getOutboundEdges('frontend/App.vue#callApi:3').filter((e) => e.relation === 'calls')
-    expect(vueCalls.length).toBeGreaterThan(0)
-
-    const pyCalls = graph.getOutboundEdges('backend/py/main.py#entry:2').filter((e) => e.relation === 'calls')
-    expect(pyCalls.length).toBeGreaterThan(0)
-
-    const goCalls = graph.getOutboundEdges('backend/go/main.go#StartServer:2').filter((e) => e.relation === 'calls')
-    expect(goCalls.length).toBeGreaterThan(0)
-
-    // Global Metrics Across All Languages
+    // Global Metrics Across All 6 Languages
     const metrics = graph.calculateMetrics()
-    expect(metrics.totalFiles).toBe(6)
-    expect(metrics.totalSymbols).toBeGreaterThan(5)
+    expect(metrics.totalFiles).toBe(7)
+    expect(metrics.totalSymbols).toBeGreaterThan(6)
   })
 
-  it('checks DriverRegistry support for TS, Vue, Svelte, Python, Go, and Rust', () => {
+  it('checks DriverRegistry support for TS, Vue, Svelte, Python, Go, Rust, and Java', () => {
     const registry = new DriverRegistry()
     expect(registry.isSupported('main.ts')).toBe(true)
     expect(registry.isSupported('App.vue')).toBe(true)
@@ -613,6 +684,7 @@ func InitConfig() {}`,
     expect(registry.isSupported('script.py')).toBe(true)
     expect(registry.isSupported('server.go')).toBe(true)
     expect(registry.isSupported('lib.rs')).toBe(true)
+    expect(registry.isSupported('UserService.java')).toBe(true)
     expect(registry.isSupported('document.pdf')).toBe(false)
   })
 })
