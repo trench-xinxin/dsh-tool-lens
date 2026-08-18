@@ -1,7 +1,7 @@
 {
   "name": "@trench-xinxin/dsh-tool-lens",
   "description": "DeepSeek Lens: Deep AST code graph, symbol call hierarchies, and refactoring impact analysis tool plugin for DeepSeek Harness",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/0409wx/dsh-tool-lens.git"
@@ -20,9 +20,9 @@
     "build": "tsdown"
   },
   "bin": {
-    "dsh-tool-lens": "./bin/dsh-lens.js",
-    "dsh-lens": "./bin/dsh-lens.js",
-    "lens": "./bin/dsh-lens.js"
+    "dsh-tool-lens": "./bin/dsh-tool-lens.js",
+    "dsh-lens": "./bin/dsh-tool-lens.js",
+    "lens": "./bin/dsh-tool-lens.js"
   },
   "main": "lib/index.mjs",
   "types": "lib/index.d.mts",
@@ -43,6 +43,7 @@
     "lib/invariant.mjs",
     "lib/index.d.mts",
     "lib/invariant.d.mts",
+    "bin/dsh-tool-lens.js",
     "bin/dsh-lens.js",
     "README.md",
     "README.zh.md",

@@ -4,6 +4,14 @@
 
 ---
 
+## [1.3.3] - 2026-08-18
+
+### 🩹 CLI 启动别名与脚本对齐 (Fixes)
+- 增加与 unscoped 包名一致的 `bin/dsh-tool-lens.js` 可执行文件；
+- 统一 `package.json` 中的 `bin` 映射声明（`dsh-tool-lens`, `dsh-lens`, `lens`），彻底解决 `npx` 缓存与执行路径问题。
+
+---
+
 ## [1.3.2] - 2026-08-18
 
 ### 🩹 CLI Loader 绝对路径导入修复 (Fixes)
