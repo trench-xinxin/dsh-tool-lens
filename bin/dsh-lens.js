@@ -43,16 +43,24 @@ async function main() {
 
   // Temporary patch YAML to overlay Lens onto any DSH invocation
   const tempPatch = join(tmpdir(), `dsh-lens-patch-${process.pid}-${Date.now()}.yml`)
-  const patchContent = `- insert:
-    - id: tool-lens
-      name: '${entryFile}'
-      config:
-        maxDepth: 3
-    - id: webserver
-      name: '@deepseek-ai/dsh-host-webserver'
-      config:
-        port: ${targetPort}
-`
+  const patchLines = [
+    `- insert:`,
+    `    - id: tool-lens`,
+    `      name: '${entryFile}'`,
+    `      config:`,
+    `        maxDepth: 3`,
+  ]
+
+  if (targetPort !== 3080) {
+    patchLines.push(
+      `- update:`,
+      `    id: webserver`,
+      `    config:`,
+      `      port: ${targetPort}`,
+    )
+  }
+
+  const patchContent = patchLines.join('\n') + '\n'
 
   try {
     writeFileSync(tempPatch, patchContent, 'utf8')

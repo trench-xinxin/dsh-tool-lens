@@ -4,6 +4,13 @@
 
 ---
 
+## [1.3.8] - 2026-08-18
+
+### 🩹 DSH Patch 重写语法优化 (Fixes)
+- 修复 `duplicate loader entry id: webserver` 错误：将自定义端口配置从 `- insert:` 改为 `- update:` 覆盖语法，符合 Cordis Plugin Loader 插件配置重写规范。
+
+---
+
 ## [1.3.7] - 2026-08-18
 
 ### 🩹 CLI 语法与类型注解修复 (Fixes)
