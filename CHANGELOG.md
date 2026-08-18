@@ -4,6 +4,13 @@
 
 ---
 
+## [1.3.7] - 2026-08-18
+
+### 🩹 CLI 语法与类型注解修复 (Fixes)
+- 修复 `bin/dsh-tool-lens.js` 与 `bin/dsh-lens.js` 中包含的 TS 类型注解导致的 Node.js 原生 `SyntaxError: Unexpected token ':'`，确保在纯 JS 环境下 100% 顺畅执行。
+
+---
+
 ## [1.3.6] - 2026-08-18
 
 ### 🩹 仓库地址与文档链接迁移 (Chores)

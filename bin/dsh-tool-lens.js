@@ -16,7 +16,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const pkgRoot = join(__dirname, '..')
 const entryFile = join(pkgRoot, 'lib', 'index.mjs').replace(/\\/g, '/')
 
-async function findFreePort(startPort = 3080): Promise<number> {
+async function findFreePort(startPort = 3080) {
   return new Promise((resolve) => {
     const server = createServer()
     server.unref()
