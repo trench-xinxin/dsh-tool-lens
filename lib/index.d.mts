@@ -6,7 +6,7 @@ import { Context } from "@deepseek-ai/cordis";
  * Core domain types and contracts for DeepSeek Lens.
  * @module @trench-xinxin/dsh-tool-lens/core/types
  */
-type CodeNodeKind = 'file' | 'function' | 'class' | 'interface' | 'type' | 'variable';
+type CodeNodeKind = 'file' | 'component' | 'function' | 'class' | 'interface' | 'type' | 'variable';
 type CodeEdgeRelation = 'imports' | 'calls' | 'contains' | 'implements' | 'extends';
 type CodeGraphAction = 'dependencies' | 'call_graph' | 'impact' | 'circular' | 'metrics';
 interface CodeGraphNode {
@@ -136,6 +136,12 @@ interface IncrementalIndexStats {
   indexedFiles: number;
   deletedFiles: number;
   durationMs: number;
+}
+/** Language parser driver contract for multi-ecosystem extensibility */
+interface LanguageDriver {
+  readonly name: string;
+  readonly extensions: readonly string[];
+  canHandle(filePath: string): boolean;
 }
 //#endregion
 //#region src/core/graph.d.ts
@@ -278,15 +284,61 @@ declare class ConfigParser {
  */
 declare function resolveModulePath(currentRelPath: string, importPath: string, rootDir: string, configParser?: ConfigParser, knownFiles?: Iterable<string>): string | null;
 //#endregion
+//#region src/parsers/sfc-parser.d.ts
+/**
+ * Lightweight SFC (Single File Component) extractor for Vue 3 and Svelte.
+ * Extracts `<script setup>` / `<script>` blocks and template component references without heavy external compilers.
+ * @module @trench-xinxin/dsh-tool-lens/parsers/sfc-parser
+ */
+interface SFCExtractionResult {
+  /** Combined JavaScript / TypeScript code extracted from `<script>` blocks */
+  scriptContent: string;
+  /** Script language: 'ts' | 'js' */
+  lang: 'ts' | 'js';
+  /** Component names referenced in `<template>` tags (e.g., ['ChildButton', 'UserAvatar']) */
+  templateComponents: string[];
+  /** Total line count of the SFC */
+  totalLines: number;
+}
+/**
+ * Converts a kebab-case tag name to PascalCase.
+ * e.g., "my-button" -> "MyButton"
+ */
+declare function kebabToPascal(str: string): string;
+/**
+ * Parses a Vue SFC (.vue) or Svelte component (.svelte) content.
+ */
+declare function extractSFCBlocks(content: string, filePath: string): SFCExtractionResult;
+//#endregion
+//#region src/parsers/driver.d.ts
+declare class TSLanguageDriver implements LanguageDriver {
+  readonly name = "typescript";
+  readonly extensions: readonly [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
+  canHandle(filePath: string): boolean;
+}
+declare class SFCLanguageDriver implements LanguageDriver {
+  readonly name = "sfc";
+  readonly extensions: readonly [".vue", ".svelte"];
+  canHandle(filePath: string): boolean;
+}
+declare class DriverRegistry {
+  private readonly drivers;
+  constructor();
+  register(driver: LanguageDriver): void;
+  getDriverForFile(filePath: string): LanguageDriver | undefined;
+  isSupported(filePath: string): boolean;
+}
+//#endregion
 //#region src/parsers/ts-parser.d.ts
 /**
  * Parses files in a workspace into an AST and populates a GraphStore
- * with file, symbol, import, extends, implements, and scope-aware call hierarchy relations.
+ * with file, component, symbol, import, extends, implements, and scope-aware call hierarchy relations.
  */
 declare class TSParser {
   private readonly graph;
   private configParser?;
   private readonly cacheStore;
+  private readonly driverRegistry;
   private readonly fileSymbols;
   private readonly fileImports;
   private readonly fileBindings;
@@ -297,6 +349,8 @@ declare class TSParser {
   getGraph(): GraphStore;
   /** Get the underlying IncrementalCacheStore. */
   getCacheStore(): IncrementalCacheStore;
+  /** Get the DriverRegistry. */
+  getDriverRegistry(): DriverRegistry;
   /**
    * Recursively scans and analyzes all source files under the root directory with incremental caching.
    * @param rootDir - Root directory to index.
@@ -310,15 +364,14 @@ declare class TSParser {
   indexDirectoryIncremental(rootDir: string, signal?: AbortSignal): Promise<IncrementalIndexStats>;
   /**
    * Invalidates a single file and reloads it incrementally into the graph.
-   * Useful for watch mode or single-file edits.
    */
   invalidateAndReloadFile(relPath: string, rootDir: string): void;
   /**
-   * Analyzes single file content and registers symbols and relations into the graph.
+   * Analyzes single file or SFC component content and registers symbols and relations into the graph.
    * @param relPath - Relative path of the file from workspace root.
    * @param content - File text content.
    * @param rootDir - Workspace root directory.
-   * @param autoLink - Whether to resolve calls and heritages immediately (defaults to true for standalone use).
+   * @param autoLink - Whether to resolve calls and heritages immediately.
    */
   analyzeSourceCode(relPath: string, content: string, rootDir: string, autoLink?: boolean): void;
   /** Restores memory state and GraphStore from a cached file entry. */
@@ -509,4 +562,4 @@ declare const Config: Schema<Config>;
  */
 declare function apply(ctx: Context, config?: Config): void;
 //#endregion
-export { CacheSnapshot, CircularAnalysisResult, CircularCycle, CodeAnalyzer, CodeEdgeRelation, CodeGraphAction, CodeGraphEdge, CodeGraphNode, CodeGraphResult, CodeNodeKind, Config, ConfigParser, FileDeltaStatus, FileIndexCache, GraphStore, ImpactAnalysisResult, ImpactTiers, IncrementalCacheStore, IncrementalIndexStats, LENS_PROMPT_TEXT, LensArgs, LensWatcher, ModuleMetric, PathMappingRule, ProjectMetrics, SUPPORTED_EXTENSIONS, TSParser, TopHub, WatcherOptions, analyzeCircularDependencies, analyzeImpact, analyzeProjectMetrics, apply, buildCircularResult, buildMetricsResult, formatGraphMarkdown, generateMermaidDiagram, inject, name, presentLensCall, presentLensResult, resolveModulePath };
+export { CacheSnapshot, CircularAnalysisResult, CircularCycle, CodeAnalyzer, CodeEdgeRelation, CodeGraphAction, CodeGraphEdge, CodeGraphNode, CodeGraphResult, CodeNodeKind, Config, ConfigParser, DriverRegistry, FileDeltaStatus, FileIndexCache, GraphStore, ImpactAnalysisResult, ImpactTiers, IncrementalCacheStore, IncrementalIndexStats, LENS_PROMPT_TEXT, LanguageDriver, LensArgs, LensWatcher, ModuleMetric, PathMappingRule, ProjectMetrics, SFCExtractionResult, SFCLanguageDriver, SUPPORTED_EXTENSIONS, TSLanguageDriver, TSParser, TopHub, WatcherOptions, analyzeCircularDependencies, analyzeImpact, analyzeProjectMetrics, apply, buildCircularResult, buildMetricsResult, extractSFCBlocks, formatGraphMarkdown, generateMermaidDiagram, inject, kebabToPascal, name, presentLensCall, presentLensResult, resolveModulePath };

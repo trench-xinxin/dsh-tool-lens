@@ -7,6 +7,8 @@ import {
   GraphStore,
   IncrementalCacheStore,
   LensWatcher,
+  DriverRegistry,
+  extractSFCBlocks,
   formatGraphMarkdown,
   generateMermaidDiagram,
   presentLensCall,
@@ -247,6 +249,132 @@ describe('IncrementalCacheStore & Disk Snapshot', () => {
         } catch {}
       }
     }
+  })
+})
+
+describe('Phase 4: Frontend SFC & Multi-Driver Support', () => {
+  it('extracts Vue 3 <script setup lang="ts"> and template component tags', () => {
+    const vueCode = `
+      <template>
+        <div class="container">
+          <UserHeader :title="heading" />
+          <my-button @click="handleClick">Submit</my-button>
+        </div>
+      </template>
+
+      <script setup lang="ts">
+      import { ref } from 'vue'
+      import UserHeader from './UserHeader.vue'
+      import MyButton from './MyButton.vue'
+      import { formatTitle } from './utils.ts'
+
+      const heading = ref(formatTitle('Dashboard'))
+
+      function handleClick() {
+        console.log('clicked')
+      }
+      </script>
+    `
+
+    const extracted = extractSFCBlocks(vueCode, 'src/App.vue')
+    expect(extracted.lang).toBe('ts')
+    expect(extracted.scriptContent).toContain('UserHeader')
+    expect(extracted.scriptContent).toContain('handleClick')
+    expect(extracted.templateComponents).toEqual(
+      expect.arrayContaining(['UserHeader', 'MyButton', 'my-button']),
+    )
+  })
+
+  it('analyzes Vue 3 SFC component dependency graph and template calls', () => {
+    const analyzer = new CodeAnalyzer()
+
+    const userHeaderVue = `
+      <template>
+        <h1>{{ title }}</h1>
+      </template>
+      <script setup lang="ts">
+      defineProps<{ title: string }>()
+      </script>
+    `
+
+    const utilsTs = `
+      export function formatTitle(t: string) {
+        return t.toUpperCase()
+      }
+    `
+
+    const appVue = `
+      <template>
+        <UserHeader :title="heading" />
+      </template>
+      <script setup lang="ts">
+      import UserHeader from './UserHeader.vue'
+      import { formatTitle } from './utils.ts'
+
+      const heading = formatTitle('Lens App')
+      </script>
+    `
+
+    analyzer.analyzeSourceCode('src/UserHeader.vue', userHeaderVue, '/root', false)
+    analyzer.analyzeSourceCode('src/utils.ts', utilsTs, '/root', false)
+    analyzer.analyzeSourceCode('src/App.vue', appVue, '/root', true)
+
+    const graph = analyzer.getGraph()
+
+    // 1. App.vue node should be of kind 'component'
+    const appNode = graph.getNode('src/App.vue')
+    expect(appNode).toBeDefined()
+    expect(appNode?.kind).toBe('component')
+
+    const userHeaderNode = graph.getNode('src/UserHeader.vue')
+    expect(userHeaderNode).toBeDefined()
+    expect(userHeaderNode?.kind).toBe('component')
+
+    // 2. App.vue imports UserHeader.vue and utils.ts
+    const appOutEdges = graph.getOutboundEdges('src/App.vue')
+    const importTargets = appOutEdges.filter((e) => e.relation === 'imports').map((e) => e.to)
+    expect(importTargets).toContain('src/UserHeader.vue')
+    expect(importTargets).toContain('src/utils.ts')
+
+    // 3. Template <UserHeader /> creates usage call edge
+    const callTargets = appOutEdges.filter((e) => e.relation === 'calls').map((e) => e.to)
+    expect(callTargets).toContain('src/UserHeader.vue')
+  })
+
+  it('analyzes Svelte component files (.svelte)', () => {
+    const analyzer = new CodeAnalyzer()
+
+    const childSvelte = `
+      <script lang="ts">
+      export let name = 'World';
+      </script>
+      <h1>Hello {name}</h1>
+    `
+
+    const mainSvelte = `
+      <script lang="ts">
+      import Child from './Child.svelte';
+      </script>
+      <Child name="Svelte" />
+    `
+
+    analyzer.analyzeSourceCode('src/Child.svelte', childSvelte, '/root', false)
+    analyzer.analyzeSourceCode('src/Main.svelte', mainSvelte, '/root', true)
+
+    const graph = analyzer.getGraph()
+    const mainNode = graph.getNode('src/Main.svelte')
+    expect(mainNode?.kind).toBe('component')
+
+    const outEdges = graph.getOutboundEdges('src/Main.svelte')
+    expect(outEdges.some((e) => e.to === 'src/Child.svelte' && e.relation === 'imports')).toBe(true)
+  })
+
+  it('checks DriverRegistry registration and extension match', () => {
+    const registry = new DriverRegistry()
+    expect(registry.isSupported('App.vue')).toBe(true)
+    expect(registry.isSupported('App.svelte')).toBe(true)
+    expect(registry.isSupported('index.ts')).toBe(true)
+    expect(registry.isSupported('unknown.xyz')).toBe(false)
   })
 })
 

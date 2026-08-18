@@ -1,7 +1,7 @@
 /**
- * AST extraction and symbol analysis engine for TypeScript and JavaScript codebases.
+ * AST extraction and symbol analysis engine for TypeScript, JavaScript, Vue SFC, and Svelte.
  * Handles Re-exports, OOP extends/implements heritage, Scope-Aware call resolution,
- * and high-performance incremental caching.
+ * SFC template components, and high-performance incremental caching.
  * @module @trench-xinxin/dsh-tool-lens/parsers/ts-parser
  */
 
@@ -18,6 +18,8 @@ import type {
   IncrementalIndexStats,
 } from '../core/types.ts'
 import { ConfigParser, resolveModulePath, SUPPORTED_EXTENSIONS } from './config-parser.ts'
+import { DriverRegistry } from './driver.ts'
+import { extractSFCBlocks } from './sfc-parser.ts'
 
 const IGNORED_DIRECTORIES = new Set(['node_modules', '.git', 'dist', 'lib', 'build', '.dsh', 'coverage'])
 
@@ -44,12 +46,13 @@ interface PendingHeritage {
 
 /**
  * Parses files in a workspace into an AST and populates a GraphStore
- * with file, symbol, import, extends, implements, and scope-aware call hierarchy relations.
+ * with file, component, symbol, import, extends, implements, and scope-aware call hierarchy relations.
  */
 export class TSParser {
   private readonly graph: GraphStore
   private configParser?: ConfigParser
   private readonly cacheStore: IncrementalCacheStore
+  private readonly driverRegistry = new DriverRegistry()
   private readonly fileSymbols = new Map<string, Map<string, CodeGraphNode>>()
   private readonly fileImports = new Map<string, Set<string>>()
   private readonly fileBindings = new Map<string, Map<string, ImportBinding>>()
@@ -69,6 +72,11 @@ export class TSParser {
   /** Get the underlying IncrementalCacheStore. */
   getCacheStore(): IncrementalCacheStore {
     return this.cacheStore
+  }
+
+  /** Get the DriverRegistry. */
+  getDriverRegistry(): DriverRegistry {
+    return this.driverRegistry
   }
 
   /**
@@ -108,7 +116,6 @@ export class TSParser {
       const statusInfo = this.cacheStore.checkFileStatus(relPath, rootDir)
 
       if (statusInfo.status === 'unchanged') {
-        // Cache hit: restore file from cache without AST parsing
         const cached = this.cacheStore.get(relPath)
         if (cached) {
           this.restoreFromCache(cached)
@@ -117,7 +124,6 @@ export class TSParser {
         }
       }
 
-      // Cache miss (modified or added): parse fresh AST
       try {
         const content = statusInfo.content ?? readFileSync(filePath, 'utf8')
         this.graph.removeFile(relPath)
@@ -129,7 +135,7 @@ export class TSParser {
       }
     }
 
-    // 2. Handle deleted files that exist in cache but not on disk
+    // 2. Handle deleted files
     for (const cachedFile of this.cacheStore.getAllFiles()) {
       if (!diskFileRelSet.has(cachedFile)) {
         this.graph.removeFile(cachedFile)
@@ -139,7 +145,7 @@ export class TSParser {
       }
     }
 
-    // 3. Link all cross-file dependencies and calls
+    // 3. Link cross-file dependencies and calls
     this.linkAllCalls()
     this.linkAllHeritages()
 
@@ -154,7 +160,6 @@ export class TSParser {
 
   /**
    * Invalidates a single file and reloads it incrementally into the graph.
-   * Useful for watch mode or single-file edits.
    */
   invalidateAndReloadFile(relPath: string, rootDir: string): void {
     if (!this.configParser) {
@@ -179,29 +184,41 @@ export class TSParser {
   }
 
   /**
-   * Analyzes single file content and registers symbols and relations into the graph.
+   * Analyzes single file or SFC component content and registers symbols and relations into the graph.
    * @param relPath - Relative path of the file from workspace root.
    * @param content - File text content.
    * @param rootDir - Workspace root directory.
-   * @param autoLink - Whether to resolve calls and heritages immediately (defaults to true for standalone use).
+   * @param autoLink - Whether to resolve calls and heritages immediately.
    */
   analyzeSourceCode(relPath: string, content: string, rootDir: string, autoLink = true): void {
     if (!this.configParser) {
       this.configParser = new ConfigParser(rootDir)
     }
 
+    const isSFC = relPath.endsWith('.vue') || relPath.endsWith('.svelte')
+    const primaryKind: CodeNodeKind = isSFC ? 'component' : 'file'
+
     const fileNodeId = relPath
     const fileNode: CodeGraphNode = {
       id: fileNodeId,
       name: relPath,
-      kind: 'file',
+      kind: primaryKind,
       filePath: relPath,
     }
     this.graph.addNode(fileNode)
 
+    let codeToParse = content
+    let templateComponents: string[] = []
+
+    if (isSFC) {
+      const sfcData = extractSFCBlocks(content, relPath)
+      codeToParse = sfcData.scriptContent
+      templateComponents = sfcData.templateComponents
+    }
+
     const sourceFile = ts.createSourceFile(
       relPath,
-      content,
+      codeToParse,
       ts.ScriptTarget.Latest,
       true,
       relPath.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
@@ -231,7 +248,7 @@ export class TSParser {
 
     // Pass 1: Extract imports, re-exports, and top-level definitions
     const visitDefinitions = (node: ts.Node) => {
-      // 1. Imports (import { foo } from './mod', import * as bar from './mod')
+      // 1. Imports
       if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
         const importTarget = node.moduleSpecifier.text
         const resolvedPath = resolveModulePath(
@@ -247,7 +264,7 @@ export class TSParser {
           const targetFileNode: CodeGraphNode = {
             id: resolvedPath,
             name: resolvedPath,
-            kind: 'file',
+            kind: resolvedPath.endsWith('.vue') || resolvedPath.endsWith('.svelte') ? 'component' : 'file',
             filePath: resolvedPath,
           }
           this.graph.addNode(targetFileNode)
@@ -294,7 +311,7 @@ export class TSParser {
         }
       }
 
-      // 2. Re-exports (export * from './mod', export { a, b as c } from './mod')
+      // 2. Re-exports
       if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
         const exportTarget = node.moduleSpecifier.text
         const resolvedPath = resolveModulePath(
@@ -310,7 +327,7 @@ export class TSParser {
           const targetFileNode: CodeGraphNode = {
             id: resolvedPath,
             name: resolvedPath,
-            kind: 'file',
+            kind: resolvedPath.endsWith('.vue') || resolvedPath.endsWith('.svelte') ? 'component' : 'file',
             filePath: resolvedPath,
           }
           this.graph.addNode(targetFileNode)
@@ -432,22 +449,24 @@ export class TSParser {
         }
       }
 
-      // 6. Variable Functions (const foo = () => {})
+      // 6. Variable Functions / Reactive States
       if (ts.isVariableStatement(node)) {
         for (const decl of node.declarationList.declarations) {
-          if (
-            ts.isIdentifier(decl.name) &&
-            decl.initializer &&
-            (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer))
-          ) {
-            const funcNode = this.createSymbolNode(sourceFile, decl, decl.name.text, 'function', relPath)
-            this.graph.addNode(funcNode)
-            const containsEdge: CodeGraphEdge = { from: fileNodeId, to: funcNode.id, relation: 'contains' }
+          if (ts.isIdentifier(decl.name)) {
+            const isFunc =
+              decl.initializer &&
+              (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer))
+            const kind: CodeNodeKind = isFunc ? 'function' : 'variable'
+            const varNode = this.createSymbolNode(sourceFile, decl, decl.name.text, kind, relPath)
+            this.graph.addNode(varNode)
+            const containsEdge: CodeGraphEdge = { from: fileNodeId, to: varNode.id, relation: 'contains' }
             this.graph.addEdge(containsEdge)
-            fileNodes.push(funcNode)
+            fileNodes.push(varNode)
             fileEdges.push(containsEdge)
-            symbolsInFile!.set(funcNode.name, funcNode)
-            definedFunctionsInFile.push(funcNode)
+            symbolsInFile!.set(varNode.name, varNode)
+            if (isFunc) {
+              definedFunctionsInFile.push(varNode)
+            }
           }
         }
       }
@@ -486,7 +505,24 @@ export class TSParser {
       })
     }
 
-    // Pass 3: Save to Incremental Cache
+    // Pass 3: Process SFC template referenced components
+    for (const compName of templateComponents) {
+      const binding = bindingsInFile.get(compName)
+      if (binding) {
+        const targetComponentNode = this.graph.getNode(binding.sourcePath)
+        if (targetComponentNode) {
+          const usageEdge: CodeGraphEdge = {
+            from: fileNodeId,
+            to: targetComponentNode.id,
+            relation: 'calls',
+          }
+          this.graph.addEdge(usageEdge)
+          fileEdges.push(usageEdge)
+        }
+      }
+    }
+
+    // Pass 4: Save to Incremental Cache
     const bindingsObj: Record<string, ImportBinding> = {}
     for (const [k, v] of bindingsInFile.entries()) {
       bindingsObj[k] = v
@@ -533,7 +569,7 @@ export class TSParser {
       this.fileSymbols.set(relPath, symbols)
     }
     for (const node of cached.nodes) {
-      if (node.kind !== 'file') {
+      if (node.kind !== 'file' && node.kind !== 'component') {
         symbols.set(node.name, node)
       }
     }

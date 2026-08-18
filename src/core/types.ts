@@ -3,7 +3,14 @@
  * @module @trench-xinxin/dsh-tool-lens/core/types
  */
 
-export type CodeNodeKind = 'file' | 'function' | 'class' | 'interface' | 'type' | 'variable'
+export type CodeNodeKind =
+  | 'file'
+  | 'component'
+  | 'function'
+  | 'class'
+  | 'interface'
+  | 'type'
+  | 'variable'
 
 export type CodeEdgeRelation = 'imports' | 'calls' | 'contains' | 'implements' | 'extends'
 
@@ -135,4 +142,11 @@ export interface IncrementalIndexStats {
   indexedFiles: number
   deletedFiles: number
   durationMs: number
+}
+
+/** Language parser driver contract for multi-ecosystem extensibility */
+export interface LanguageDriver {
+  readonly name: string
+  readonly extensions: readonly string[]
+  canHandle(filePath: string): boolean
 }

@@ -236,8 +236,8 @@ packages/lens/tool-lens/src/
 ## 7. 总结与行动项 (Action Items)
 
 | 阶段 | 核心任务 | 状态 |
-| :--- | :--- | :--- |
-| **Phase 1 (v0.2.0)** | 补齐 Re-export、tsconfig paths 别名、extends/implements 关系、Mermaid 图渲染 | 规划就绪，待执行 |
-| **Phase 2 (v0.3.0)** | 新增 circular 循环依赖检测、metrics 架构指标、impact 爆炸半径分级 | 设计就绪 |
-| **Phase 3 (v0.4.0)** | 增量建图引擎与 mtime 缓存 | 设计就绪 |
-| **Phase 4 (v1.0.0)** | Vue SFC 支持与多语言抽象层 | 规划中 |
+| :--- | :--- | :---: |
+| **Phase 1 (v0.2.0)** | 补齐 Re-export、tsconfig paths 别名、extends/implements 关系、Mermaid 图渲染 | ✅ **已完成** |
+| **Phase 2 (v0.3.0)** | 新增 circular 循环依赖检测、metrics 架构指标、impact 爆炸半径分级 | ✅ **已完成** |
+| **Phase 3 (v0.4.0)** | 增量建图引擎与 mtime/SHA-256 缓存、Watch 模式 | ✅ **已完成** |
+| **Phase 4 (v1.0.0)** | Vue SFC 支持、Svelte 支持与多语言 Driver 抽象层 | ✅ **已完成** |

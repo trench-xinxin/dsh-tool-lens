@@ -4,6 +4,23 @@
 
 ---
 
+## [1.0.0] - 2026-08-18
+
+### 🎉 全栈里程碑发布：前端 SFC 组件与多语言驱动层 (Phase 4)
+
+#### ✨ 新增特性 (Features)
+- **Vue 3 SFC 单文件组件深度支持 (`.vue`)**:
+  - 精准提取 `<script setup lang="ts">` 与普通 `<script>` 中的响应式变量、普通函数、类及导入；
+  - 自动扫描 `<template>` 中使用的子组件标签（支持 PascalCase `<UserHeader>` 与 kebab-case `<user-header>`），建立组件间拓扑引用边与组件节点。
+- **Svelte 单文件组件支持 (`.svelte`)**:
+  - 提取 `<script>` 逻辑与模板中的组件依赖，建立组件节点与调用链路。
+- **多语言驱动层抽象 (`LanguageDriver` & `DriverRegistry`)**:
+  - 抽象统一的 `LanguageDriver` 接口与 `DriverRegistry` 注册表，解耦具体语言语法提取与图存储，内置 `TSLanguageDriver` 与 `SFCLanguageDriver`。
+- **扩展名探测升级**:
+  - 扩展支持 `.vue` 与 `.svelte` 扩展名的自动扫描与缺省后缀省略探测（如 `import App from './App'` 自动匹配 `App.vue`）。
+
+---
+
 ## [0.3.1] - 2026-08-18
 
 ### 🩹 修复与优化 (Fixes)

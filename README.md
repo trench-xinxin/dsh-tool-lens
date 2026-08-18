@@ -51,17 +51,22 @@ npx @trench-xinxin/dsh-tool-lens "Use lens tool to audit circular dependencies i
    - Tarjan SCC and DFS cycle detection algorithm detects closed loops (e.g. `A -> B -> C -> A`).
    - Outputs full cycle loops and involved file lists to avoid runtime initialization deadlocks.
 
-5. **⚡ Sub-20ms Incremental Cache & Live Watch Mode (`incremental & watch`)**
+5. **🧩 Frontend Single File Components (`Vue & Svelte SFC`)**
+   - **Vue 3 SFC (`.vue`)**: Full parsing of `<script setup lang="ts">`, standard `<script>`, and `<template>` component tag linkages.
+   - **Svelte (`.svelte`)**: Component logic extraction and template dependency resolution.
+   - **LanguageDriver Architecture**: Extensible driver abstraction separating syntax extraction from graph storage.
+
+6. **⚡ Sub-20ms Incremental Cache & Live Watch Mode (`incremental & watch`)**
    - High-performance `mtime` and `SHA-256` content hashing skips AST re-parsing for unchanged files.
    - Automatically supports `.dsh/lens-cache.json` disk snapshots.
    - Built-in `LensWatcher` (100ms debounce) for live topological synchronization during code editing.
 
-6. **📊 Architectural Coupling & Health Metrics (`metrics`)**
+7. **📊 Architectural Coupling & Health Metrics (`metrics`)**
    - Evaluates **Afferent Coupling ($Ca$)** and **Efferent Coupling ($Ce$)**.
    - Calculates **Instability ($I = Ce / (Ca + Ce)$)** to evaluate module fragility.
    - Identifies **Top Centrality Hubs** to locate God Classes and core architecture anchors.
 
-7. **🎨 Mermaid Visual Topologies & Token Safeguard**
+8. **🎨 Mermaid Visual Topologies & Token Safeguard**
    - Automatically renders interactive Mermaid flowcharts when nodes $\le 25$.
    - Automatically truncates and summarizes large graphs when nodes $> 50$ to avoid LLM context overflow.
 

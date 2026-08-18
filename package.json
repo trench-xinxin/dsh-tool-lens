@@ -1,7 +1,7 @@
 {
   "name": "@trench-xinxin/dsh-tool-lens",
   "description": "DeepSeek Lens: Deep AST code graph, symbol call hierarchies, and refactoring impact analysis tool plugin for DeepSeek Harness",
-  "version": "0.3.1",
+  "version": "1.0.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/0409wx/dsh-tool-lens.git"

@@ -51,17 +51,22 @@ npx @trench-xinxin/dsh-tool-lens "使用 lens 工具审计项目中的循环依�
    - 基于 Tarjan 强连通分量与 DFS 染色算法，一键检测所有闭合环路（如 `A -> B -> C -> A`）。
    - 输出环路链路与受波及文件清单，规避运行时初始化死锁与内存泄露。
 
-5. **⚡ 毫秒级增量缓存与实时 Watch 模式 (`incremental & watch`)**
+5. **🧩 前端单文件组件与全生态驱动 (`vue & svelte SFC`)**
+   - **Vue 3 SFC (`.vue`)**：支持 `<script setup lang="ts">` 与普通 `<script>` 符号提取，自动分析 `<template>` 中的子组件标签并建立组件依赖图。
+   - **Svelte (`.svelte`)**：支持 `<script>` 逻辑与模板组件关联。
+   - **LanguageDriver 抽象**：插件化驱动架构，解耦语法提取与图谱存储。
+
+6. **⚡ 毫秒级增量缓存与实时 Watch 模式 (`incremental & watch`)**
    - 基于 `mtime` 与 `SHA-256` 内容哈希，二次查询未修改文件 100% 命中缓存，实现毫秒级响应（< 20ms）。
    - 自动支持 `.dsh/lens-cache.json` 磁盘快照持久化。
    - 提供 `LensWatcher` 100ms 防抖监听，源码变动时自动热同步图谱。
 
-6. **📊 架构健康度与耦合度指标 (`metrics`)**
+7. **📊 架构健康度与耦合度指标 (`metrics`)**
    - **扇入（Afferent Coupling, $Ca$）** 与 **扇出（Efferent Coupling, $Ce$）**。
    - **不稳定度（Instability, $I = Ce / (Ca + Ce)$）** 评估模块易碎性。
    - **Top Hubs 核心枢纽符号榜**：快速定位 God Class 与核心高频调用节点。
 
-7. **🎨 Mermaid 可视化与 Token 防溢出**
+8. **🎨 Mermaid 可视化与 Token 防溢出**
    - 节点数 $\le 25$ 时自动生成交互式 Mermaid 拓扑流程图。
    - 节点数 $> 50$ 时启动智能折叠截断，彻底避免大模型 Context 溢出。
 
