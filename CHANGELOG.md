@@ -4,6 +4,23 @@
 
 ---
 
+## [2.0.0] - 2026-08-18
+
+### 🌟 Phase 7 架构切片、Git Diff 增量影响审计与跨前后端 API 契约追踪 (Major Milestone Release)
+- **`action: diff_impact` (Git 变更增量影响审计)**：
+  - 自动提取当前工作区（`git diff`）或指定 commit 范围的修改文件与符号；
+  - 沿反向入度依赖链计算精准受波及文件与上游破坏性调用方；
+  - 自动识别并**推荐优先回归测试用例清单（Recommended Test Suite）**。
+- **`action: slice` (业务领域架构智能切片)**：
+  - 基于程序切片与自我网络（Ego-Network）图聚类算法，以指定业务领域种子节点为核心，提取高信噪比紧凑子图；
+  - 自动计算并输出切片内部内聚度评分（Cohesion Score）与跨边界外部依赖边。
+- **`action: api_contracts` (跨前后端全栈 API 契约连通)**：
+  - 前端自动解析 `fetch`、`axios.get/post`、`request.get/post` 等 HTTP 客户端调用；
+  - 后端自动识别 Java Spring (`@GetMapping/@PostMapping`)、Python FastAPI/Flask (`@app.get/@router.post`)、Go Gin/Echo (`r.GET/router.POST`) 路由控制器；
+  - 自动建立跨语言虚拟调用边（`Frontend Call --[calls]--> Backend Route Handler`），打通从前端 UI 直达后端服务实现的方法级端到端全链路图谱！
+
+---
+
 ## [1.4.0] - 2026-08-18
 
 ### 🚀 CLI 启动器参数对齐与端口自适应稳定版 (Release)

@@ -1,7 +1,8 @@
 /**
  * Model-facing `lens` tool for symbol call hierarchies, file dependencies,
  * circular dependency audit, architecture metrics, refactoring impact analysis,
- * pathfinding, dead code detection, and architecture boundary linting.
+ * pathfinding, dead code detection, architecture boundary linting,
+ * git diff impact analysis, architecture slicing, and full-stack API contract tracing.
  *
  * Namespace plugin (named exports, no default export).
  * @module @trench-xinxin/dsh-tool-lens
@@ -13,12 +14,15 @@ import Schema from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { CodeAnalyzer } from './analyzer.ts'
+import { buildApiContractsResult } from './analytics/api-contracts.ts'
 import { buildLintResult } from './analytics/architecture.ts'
 import { buildCircularResult } from './analytics/circular.ts'
 import { buildUnusedResult } from './analytics/deadcode.ts'
+import { analyzeGitDiffImpact } from './analytics/git-diff.ts'
 import { analyzeImpact } from './analytics/impact.ts'
 import { buildMetricsResult } from './analytics/metrics.ts'
 import { buildPathfindingResult } from './analytics/pathfinding.ts'
+import { buildSliceResult } from './analytics/slicing.ts'
 import { formatGraphMarkdown, presentLensCall, presentLensResult } from './render.ts'
 import type { CodeGraphResult, LensArgs } from './types.ts'
 
@@ -40,6 +44,9 @@ export * from './analytics/impact.ts'
 export * from './analytics/pathfinding.ts'
 export * from './analytics/deadcode.ts'
 export * from './analytics/architecture.ts'
+export * from './analytics/git-diff.ts'
+export * from './analytics/slicing.ts'
+export * from './analytics/api-contracts.ts'
 export * from './render.ts'
 export * from './analyzer.ts'
 
@@ -51,7 +58,7 @@ export const inject = ['tools', 'systemPrompt']
 
 /** System prompt guidance describing the purpose and usage of the tool. */
 export const LENS_PROMPT_TEXT =
-  'Use the lens tool when you need to understand symbol relationships across files, tracking callers/callees, exploring module dependencies, auditing circular dependencies, evaluating architecture coupling metrics, tracing shortest call paths, discovering dead code, or measuring the blast radius of refactoring.'
+  'Use the lens tool when you need to understand symbol relationships across files, tracking callers/callees, exploring module dependencies, auditing circular dependencies, evaluating architecture coupling metrics, tracing shortest call paths, discovering dead code, analyzing git diff changes, extracting domain architecture slices, connecting full-stack frontend-backend HTTP API contracts, or measuring the blast radius of refactoring.'
 
 /** Plugin configuration schema. */
 export interface Config {
@@ -158,6 +165,18 @@ const LENS_OUTPUT_SCHEMA = {
         additionalProperties: true,
       },
     },
+    diffImpact: {
+      type: 'object',
+      additionalProperties: true,
+    },
+    sliceResult: {
+      type: 'object',
+      additionalProperties: true,
+    },
+    apiContracts: {
+      type: 'object',
+      additionalProperties: true,
+    },
   },
 } as const
 
@@ -192,18 +211,30 @@ export function apply(ctx: Context, config: Config = {}): void {
     defineTool<LensArgs, CodeGraphResult>({
       name: 'lens',
       description:
-        'Inspect symbol call hierarchies, file dependencies, circular dependencies, architecture metrics, shortest call paths, dead code, and refactoring impact graphs across TypeScript, Vue, Svelte, Python, Go, Rust, and Java codebases.',
+        'Inspect symbol call hierarchies, file dependencies, circular dependencies, architecture metrics, shortest call paths, dead code, git diff changes, domain slices, full-stack API contracts, and refactoring impact graphs across TypeScript, Vue, Svelte, Python, Go, Rust, and Java codebases.',
       parameters: {
         action: {
           type: 'string',
           required: true,
-          enum: ['dependencies', 'call_graph', 'impact', 'circular', 'metrics', 'path', 'unused', 'lint'],
+          enum: [
+            'dependencies',
+            'call_graph',
+            'impact',
+            'circular',
+            'metrics',
+            'path',
+            'unused',
+            'lint',
+            'diff_impact',
+            'slice',
+            'api_contracts',
+          ],
           description:
-            'The type of graph query: dependencies (file imports), call_graph (function calls), impact (blast radius), circular (cycle audit), metrics (coupling health), path (shortest invocation trace), unused (dead code audit), or lint (layer boundary rules).',
+            'The type of graph query: dependencies (file imports), call_graph (function calls), impact (blast radius), circular (cycle audit), metrics (coupling health), path (shortest invocation trace), unused (dead code audit), lint (layer boundary rules), diff_impact (git changes impact), slice (domain subgraph), or api_contracts (full-stack HTTP routing contracts).',
         },
         target: {
           type: 'string',
-          description: 'Target symbol name, function name, or relative file path to analyze (source node for path action).',
+          description: 'Target symbol name, function name, relative file path, or domain seed to analyze.',
         },
         to: {
           type: 'string',
@@ -212,6 +243,10 @@ export function apply(ctx: Context, config: Config = {}): void {
         rules: {
           type: 'string',
           description: 'JSON array string of architectural boundary rules (action: lint).',
+        },
+        commit: {
+          type: 'string',
+          description: 'Git commit hash or range to compare against (action: diff_impact).',
         },
         depth: {
           type: 'number',
@@ -269,7 +304,33 @@ export function apply(ctx: Context, config: Config = {}): void {
           return buildLintResult(store, lensArgs.rules)
         }
 
-        // 5. Action: Pathfinding Shortest Invocation Chain
+        // 5. Action: Git Diff Impact Analysis
+        if (lensArgs.action === 'diff_impact') {
+          return analyzeGitDiffImpact(store, workspaceRoot, lensArgs.commit)
+        }
+
+        // 6. Action: Architecture Subgraph Slice
+        if (lensArgs.action === 'slice') {
+          if (!targetQuery) {
+            return {
+              target: '',
+              action: 'slice',
+              rootNodes: [],
+              nodes: [],
+              edges: [],
+              summary: "Error: 'target' domain seed is required for action 'slice'.",
+            }
+          }
+          const sliceHops = Math.min(lensArgs.depth ?? 2, 4)
+          return buildSliceResult(store, targetQuery, sliceHops)
+        }
+
+        // 7. Action: Full-Stack Cross-Language API Contracts
+        if (lensArgs.action === 'api_contracts') {
+          return buildApiContractsResult(store)
+        }
+
+        // 8. Action: Pathfinding Shortest Invocation Chain
         if (lensArgs.action === 'path') {
           if (!targetQuery || !lensArgs.to) {
             return {
@@ -284,7 +345,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           return buildPathfindingResult(store, targetQuery, lensArgs.to)
         }
 
-        // 6. Actions requiring single target matching (impact, dependencies, call_graph)
+        // 9. Actions requiring single target matching (impact, dependencies, call_graph)
         if (!targetQuery) {
           return {
             target: '',

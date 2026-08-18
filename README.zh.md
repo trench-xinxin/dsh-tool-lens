@@ -58,12 +58,21 @@ npx @trench-xinxin/dsh-tool-lens "使用 lens 工具审计项目中的循环依�
    - 基于双向 BFS 算法，秒级探查两点间（`target` -> `to`）的最短跨模块执行轨迹与调用通路。
 
 6. **🧹 孤岛死代码与无引用符号审计 (`action: unused`)**
-   - 自动识别系统入口，全图审计入度 $Ca = 0$ 的不可达导出符号与孤岛文件，指导安全重构。
+   - 基于全图拓扑可达性分析，自动过滤入口文件，审计入度 $Ca = 0$ 的孤岛文件与未被任何代码调用的导出符号。
 
-7. **🛡 架构分层防腐边界校验 (`action: lint`)**
-   - 支持自定义分层规则（如 `views/**` 禁止直接调用 `infra/**`），一键拦截架构违规调用。
+7. **🛡 架构分层防腐规则检查 (`action: lint`)**
+   - 支持自定义分层防腐规则（如 `views/**` 禁止直接调用 `infra/**`），一键拦截跨层违规依赖边。
 
-8. **🌍 多语言生态驱动全景支持 (`Java / Python / Go / Rust / TS / SFC`)**
+8. **📝 Git Diff 增量变更影响与回归测试矩阵 (`action: diff_impact`)**
+   - 自动扫描工作区 `git diff`（或指定 commit `HEAD~1`），精准提取本次修改的具体文件和方法，沿图谱反向追踪所有下游破坏范围，并**智能推荐需要回归测试的文件清单**。
+
+9. **🧩 业务领域架构智能切片 (`action: slice`)**
+   - 在大型单体/微服务项目中，根据种子节点（如 `auth` 或 `order`）自动提取紧密内聚的领域子图（Ego Network / Subgraph Slice），剔除无关边界噪声，输出内聚度评分。
+
+10. **🌐 跨前后端全栈 API 契约自动关联 (`action: api_contracts`)**
+    - 自动识别前端（Vue / TS / Svelte）的 `axios.get('/api/users')` / `fetch` 请求，与后端（Java Spring `@GetMapping`、Python FastAPI `@app.get`、Go Gin `r.GET`）路由控制器建立**跨语言虚拟调用边**，真正打通**从前端 UI 组件直达后端数据库/服务实现的方法级端到端全链路图谱**！
+
+11. **🌍 多语言生态驱动全景支持 (`Java / Python / Go / Rust / TS / SFC`)**
    - **Java (`.java`)**：支持 `package`、Maven/Gradle 结构、`class`、`interface`、`extends` 继承、`implements` 接口实现与类静态/实例方法调用。
    - **Python (`.py`)**：支持 `def`、`class` 继承、`self.method()` 及相对/绝对包导入分析。
    - **Go (`.go`)**：支持 `package` 作用域、`go.mod` 模块路径、Struct Embedding 与 Receiver 成员方法。

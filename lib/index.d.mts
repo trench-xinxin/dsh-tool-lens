@@ -6,9 +6,9 @@ import { Context } from "@deepseek-ai/cordis";
  * Core domain types and contracts for DeepSeek Lens.
  * @module @trench-xinxin/dsh-tool-lens/core/types
  */
-type CodeNodeKind = 'file' | 'component' | 'function' | 'class' | 'interface' | 'type' | 'variable';
+type CodeNodeKind = 'file' | 'component' | 'function' | 'class' | 'interface' | 'type' | 'variable' | 'api_endpoint';
 type CodeEdgeRelation = 'imports' | 'calls' | 'contains' | 'implements' | 'extends';
-type CodeGraphAction = 'dependencies' | 'call_graph' | 'impact' | 'circular' | 'metrics' | 'path' | 'unused' | 'lint';
+type CodeGraphAction = 'dependencies' | 'call_graph' | 'impact' | 'circular' | 'metrics' | 'path' | 'unused' | 'lint' | 'diff_impact' | 'slice' | 'api_contracts';
 interface CodeGraphNode {
   /** Unique composite identifier: e.g., `src/index.ts` or `src/index.ts#apply:10` */
   id: string;
@@ -22,6 +22,8 @@ interface CodeGraphNode {
   line?: number;
   /** Ending line number (1-based), if applicable */
   endLine?: number;
+  /** Additional metadata (e.g. HTTP method for api endpoints) */
+  metadata?: Record<string, any>;
 }
 interface CodeGraphEdge {
   /** Source node ID */
@@ -115,6 +117,38 @@ interface ArchitectureViolation {
   violatedRule: ArchitectureRule;
   reason: string;
 }
+/** Git diff change impact analysis */
+interface GitDiffImpactResult {
+  changedFiles: string[];
+  changedSymbols: CodeGraphNode[];
+  affectedUpstreamFiles: string[];
+  affectedTestFiles: string[];
+  breakingCallers: CodeGraphNode[];
+  totalChangedFiles: number;
+  totalAffectedFiles: number;
+}
+/** Architecture domain slice result */
+interface ArchitectureSliceResult {
+  domainSeed: string;
+  cohesionScore: number;
+  slicedNodes: CodeGraphNode[];
+  internalEdges: CodeGraphEdge[];
+  boundaryOutgoingEdges: CodeGraphEdge[];
+}
+/** Full-stack cross-language API contract match */
+interface ApiContractMatch {
+  urlPattern: string;
+  httpMethod: string;
+  clientCallNode: CodeGraphNode;
+  serverHandlerNode: CodeGraphNode;
+}
+/** Full-stack API contracts audit result */
+interface ApiContractsResult {
+  matchedContracts: ApiContractMatch[];
+  unmatchedClientCalls: CodeGraphNode[];
+  unmatchedServerEndpoints: CodeGraphNode[];
+  totalContracts: number;
+}
 interface CodeGraphResult {
   target: string;
   action: CodeGraphAction;
@@ -128,12 +162,16 @@ interface CodeGraphResult {
   pathfinding?: PathfindingResult;
   deadCode?: DeadCodeResult;
   architectureViolations?: ArchitectureViolation[];
+  diffImpact?: GitDiffImpactResult;
+  sliceResult?: ArchitectureSliceResult;
+  apiContracts?: ApiContractsResult;
 }
 interface LensArgs {
   action: CodeGraphAction;
   target?: string;
   to?: string;
   rules?: ArchitectureRule[] | string;
+  commit?: string;
   depth?: number;
   direction?: 'inbound' | 'outbound' | 'both';
   scope?: string;
@@ -594,6 +632,46 @@ declare function buildUnusedResult(graph: GraphStore, scope?: string): CodeGraph
  */
 declare function buildLintResult(graph: GraphStore, rawRules?: ArchitectureRule[] | string): CodeGraphResult;
 //#endregion
+//#region src/analytics/git-diff.d.ts
+/**
+ * Extracts changed files and symbols from git diff and calculates upstream impact.
+ */
+declare function analyzeGitDiffImpact(graph: GraphStore, workspaceRoot: string, commit?: string, rawChangedFiles?: string[]): CodeGraphResult;
+//#endregion
+//#region src/analytics/slicing.d.ts
+/**
+ * Finds domain seed nodes by exact match or fuzzy path/name inclusion.
+ */
+declare function findDomainSeedNodes(graph: GraphStore, domainQuery: string): CodeGraphNode[];
+/**
+ * Extracts a high-cohesion architectural domain slice around seed query nodes.
+ */
+declare function buildSliceResult(graph: GraphStore, domainQuery: string, maxHops?: number): CodeGraphResult;
+//#endregion
+//#region src/analytics/api-contracts.d.ts
+interface ExtractedClientApiCall {
+  filePath: string;
+  url: string;
+  method: string;
+  callerSymbolName?: string;
+  line: number;
+}
+interface ExtractedServerEndpoint {
+  filePath: string;
+  url: string;
+  method: string;
+  handlerSymbolName: string;
+  line: number;
+}
+/**
+ * Normalizes an API path for fuzzy matching (e.g. `/api/v1/users/{id}` vs `/api/v1/users/:id` -> `/api/v1/users/*`).
+ */
+declare function normalizeApiPath(path: string): string;
+/**
+ * Scans all files in the indexed workspace to match frontend client calls to backend server handlers.
+ */
+declare function buildApiContractsResult(graph: GraphStore, fileSources?: Map<string, string>): CodeGraphResult;
+//#endregion
 //#region src/render/mermaid.d.ts
 /**
  * Generates a Mermaid flowchart string from graph nodes and edges.
@@ -683,7 +761,7 @@ declare const name = "tool-lens";
 /** Services required by this plugin. */
 declare const inject: string[];
 /** System prompt guidance describing the purpose and usage of the tool. */
-declare const LENS_PROMPT_TEXT = "Use the lens tool when you need to understand symbol relationships across files, tracking callers/callees, exploring module dependencies, auditing circular dependencies, evaluating architecture coupling metrics, tracing shortest call paths, discovering dead code, or measuring the blast radius of refactoring.";
+declare const LENS_PROMPT_TEXT = "Use the lens tool when you need to understand symbol relationships across files, tracking callers/callees, exploring module dependencies, auditing circular dependencies, evaluating architecture coupling metrics, tracing shortest call paths, discovering dead code, analyzing git diff changes, extracting domain architecture slices, connecting full-stack frontend-backend HTTP API contracts, or measuring the blast radius of refactoring.";
 /** Plugin configuration schema. */
 interface Config {
   /** Maximum default graph traversal depth (default: 3). */
@@ -701,4 +779,4 @@ declare const Config: Schema<Config>;
  */
 declare function apply(ctx: Context, config?: Config): void;
 //#endregion
-export { ArchitectureRule, ArchitectureViolation, CacheSnapshot, CircularAnalysisResult, CircularCycle, CodeAnalyzer, CodeEdgeRelation, CodeGraphAction, CodeGraphEdge, CodeGraphNode, CodeGraphResult, CodeNodeKind, Config, ConfigParser, DeadCodeResult, DriverRegistry, FileDeltaStatus, FileIndexCache, GoLanguageDriver, GraphStore, ImpactAnalysisResult, ImpactTiers, IncrementalCacheStore, IncrementalIndexStats, JavaLanguageDriver, LENS_PROMPT_TEXT, LanguageDriver, LensArgs, LensWatcher, ModuleMetric, ParsedCallDef, ParsedHeritageDef, ParsedImportDef, ParsedSourceResult, ParsedSymbolDef, PathMappingRule, PathfindingResult, ProjectMetrics, PythonLanguageDriver, RustLanguageDriver, SFCExtractionResult, SFCLanguageDriver, SUPPORTED_EXTENSIONS, TSLanguageDriver, TSParser, TopHub, WatcherOptions, analyzeCircularDependencies, analyzeImpact, analyzeProjectMetrics, apply, buildCircularResult, buildLintResult, buildMetricsResult, buildPathfindingResult, buildUnusedResult, extractSFCBlocks, formatGraphMarkdown, generateMermaidDiagram, inject, kebabToPascal, name, parseGoSource, parseJavaSource, parsePythonSource, parseRustSource, presentLensCall, presentLensResult, resolveModulePath };
+export { ApiContractMatch, ApiContractsResult, ArchitectureRule, ArchitectureSliceResult, ArchitectureViolation, CacheSnapshot, CircularAnalysisResult, CircularCycle, CodeAnalyzer, CodeEdgeRelation, CodeGraphAction, CodeGraphEdge, CodeGraphNode, CodeGraphResult, CodeNodeKind, Config, ConfigParser, DeadCodeResult, DriverRegistry, ExtractedClientApiCall, ExtractedServerEndpoint, FileDeltaStatus, FileIndexCache, GitDiffImpactResult, GoLanguageDriver, GraphStore, ImpactAnalysisResult, ImpactTiers, IncrementalCacheStore, IncrementalIndexStats, JavaLanguageDriver, LENS_PROMPT_TEXT, LanguageDriver, LensArgs, LensWatcher, ModuleMetric, ParsedCallDef, ParsedHeritageDef, ParsedImportDef, ParsedSourceResult, ParsedSymbolDef, PathMappingRule, PathfindingResult, ProjectMetrics, PythonLanguageDriver, RustLanguageDriver, SFCExtractionResult, SFCLanguageDriver, SUPPORTED_EXTENSIONS, TSLanguageDriver, TSParser, TopHub, WatcherOptions, analyzeCircularDependencies, analyzeGitDiffImpact, analyzeImpact, analyzeProjectMetrics, apply, buildApiContractsResult, buildCircularResult, buildLintResult, buildMetricsResult, buildPathfindingResult, buildSliceResult, buildUnusedResult, extractSFCBlocks, findDomainSeedNodes, formatGraphMarkdown, generateMermaidDiagram, inject, kebabToPascal, name, normalizeApiPath, parseGoSource, parseJavaSource, parsePythonSource, parseRustSource, presentLensCall, presentLensResult, resolveModulePath };

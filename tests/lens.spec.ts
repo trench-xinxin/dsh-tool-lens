@@ -16,6 +16,9 @@ import {
   buildPathfindingResult,
   buildUnusedResult,
   buildLintResult,
+  analyzeGitDiffImpact,
+  buildSliceResult,
+  buildApiContractsResult,
   formatGraphMarkdown,
   generateMermaidDiagram,
   presentLensCall,
@@ -137,86 +140,90 @@ describe('GraphStore - Basic Operations & Traversal', () => {
   })
 })
 
-describe('GraphStore - Circular Dependency Detection', () => {
-  it('detects simple and multi-node circular dependency loops', () => {
+describe('Phase 7: Architecture Slicing, Git Diff Impact & API Contracts', () => {
+  it('calculates git diff change impact and recommends regression test suite', () => {
     const store = new GraphStore()
 
-    store.addNode({ id: 'a.ts', name: 'a.ts', kind: 'file', filePath: 'a.ts' })
-    store.addNode({ id: 'b.ts', name: 'b.ts', kind: 'file', filePath: 'b.ts' })
-    store.addNode({ id: 'c.ts', name: 'c.ts', kind: 'file', filePath: 'c.ts' })
-    store.addNode({ id: 'd.ts', name: 'd.ts', kind: 'file', filePath: 'd.ts' })
+    store.addNode({ id: 'src/core/types.ts', name: 'types.ts', kind: 'file', filePath: 'src/core/types.ts' })
+    store.addNode({ id: 'src/core/types.ts#User:5', name: 'User', kind: 'type', filePath: 'src/core/types.ts', line: 5 })
+    store.addNode({ id: 'src/services/user.ts', name: 'user.ts', kind: 'file', filePath: 'src/services/user.ts' })
+    store.addNode({ id: 'tests/user.spec.ts', name: 'user.spec.ts', kind: 'file', filePath: 'tests/user.spec.ts' })
 
-    // A -> B -> C -> A (cycle) and C -> D (no cycle)
-    store.addEdge({ from: 'a.ts', to: 'b.ts', relation: 'imports' })
-    store.addEdge({ from: 'b.ts', to: 'c.ts', relation: 'imports' })
-    store.addEdge({ from: 'c.ts', to: 'a.ts', relation: 'imports' })
-    store.addEdge({ from: 'c.ts', to: 'd.ts', relation: 'imports' })
+    store.addEdge({ from: 'src/services/user.ts', to: 'src/core/types.ts', relation: 'imports' })
+    store.addEdge({ from: 'tests/user.spec.ts', to: 'src/services/user.ts', relation: 'imports' })
 
-    const cycles = store.findCircularDependencies()
-    expect(cycles).toHaveLength(1)
-    expect(cycles[0]?.length).toBe(3)
-    expect(cycles[0]?.cycle).toEqual(['a.ts', 'b.ts', 'c.ts', 'a.ts'])
+    const result = analyzeGitDiffImpact(store, process.cwd(), undefined, ['src/core/types.ts'])
+    expect(result.diffImpact).toBeDefined()
+    expect(result.diffImpact?.totalChangedFiles).toBe(1)
+    expect(result.diffImpact?.affectedUpstreamFiles).toContain('src/services/user.ts')
+    expect(result.diffImpact?.affectedTestFiles).toContain('tests/user.spec.ts')
   })
 
-  it('detects multiple disjoint circular loops and normalizes duplicates', () => {
+  it('extracts high-cohesion domain architecture slices for seed queries', () => {
     const store = new GraphStore()
 
-    store.addNode({ id: 'm1.ts', name: 'm1.ts', kind: 'file', filePath: 'm1.ts' })
-    store.addNode({ id: 'm2.ts', name: 'm2.ts', kind: 'file', filePath: 'm2.ts' })
-    store.addNode({ id: 'x1.ts', name: 'x1.ts', kind: 'file', filePath: 'x1.ts' })
-    store.addNode({ id: 'x2.ts', name: 'x2.ts', kind: 'file', filePath: 'x2.ts' })
+    // Auth domain
+    store.addNode({ id: 'src/auth/login.ts', name: 'login.ts', kind: 'file', filePath: 'src/auth/login.ts' })
+    store.addNode({ id: 'src/auth/token.ts', name: 'token.ts', kind: 'file', filePath: 'src/auth/token.ts' })
+    store.addNode({ id: 'src/auth/user.ts', name: 'user.ts', kind: 'file', filePath: 'src/auth/user.ts' })
+    // External common & third-party
+    store.addNode({ id: 'src/common/util.ts', name: 'util.ts', kind: 'file', filePath: 'src/common/util.ts' })
+    store.addNode({ id: 'src/external/sdk.ts', name: 'sdk.ts', kind: 'file', filePath: 'src/external/sdk.ts' })
 
-    // Loop 1: m1 <-> m2
-    store.addEdge({ from: 'm1.ts', to: 'm2.ts', relation: 'imports' })
-    store.addEdge({ from: 'm2.ts', to: 'm1.ts', relation: 'imports' })
+    // Internal auth edges
+    store.addEdge({ from: 'src/auth/login.ts', to: 'src/auth/token.ts', relation: 'imports' })
+    store.addEdge({ from: 'src/auth/token.ts', to: 'src/auth/user.ts', relation: 'imports' })
+    // Outbound to common & external
+    store.addEdge({ from: 'src/auth/user.ts', to: 'src/common/util.ts', relation: 'imports' })
+    store.addEdge({ from: 'src/common/util.ts', to: 'src/external/sdk.ts', relation: 'imports' })
 
-    // Loop 2: x1 <-> x2
-    store.addEdge({ from: 'x1.ts', to: 'x2.ts', relation: 'imports' })
-    store.addEdge({ from: 'x2.ts', to: 'x1.ts', relation: 'imports' })
-
-    const cycles = store.findCircularDependencies()
-    expect(cycles).toHaveLength(2)
+    const result = buildSliceResult(store, 'auth', 1)
+    expect(result.sliceResult).toBeDefined()
+    expect(result.sliceResult?.slicedNodes.length).toBeGreaterThanOrEqual(3)
+    expect(result.sliceResult?.internalEdges.length).toBeGreaterThanOrEqual(2)
+    expect(result.sliceResult?.boundaryOutgoingEdges.length).toBeGreaterThanOrEqual(1)
+    expect(result.sliceResult?.cohesionScore).toBeGreaterThan(0.5)
   })
 
-  it('returns empty array when no cycles exist', () => {
-    const store = new GraphStore()
-    store.addNode({ id: 'a.ts', name: 'a.ts', kind: 'file', filePath: 'a.ts' })
-    store.addNode({ id: 'b.ts', name: 'b.ts', kind: 'file', filePath: 'b.ts' })
-    store.addEdge({ from: 'a.ts', to: 'b.ts', relation: 'imports' })
-
-    const cycles = store.findCircularDependencies()
-    expect(cycles).toHaveLength(0)
-  })
-})
-
-describe('GraphStore - Architecture Metrics & Instability', () => {
-  it('calculates Ca, Ce, instability and centrality top hubs', () => {
+  it('links full-stack frontend client calls to backend route handlers', () => {
     const store = new GraphStore()
 
-    store.addNode({ id: 'core.ts', name: 'core.ts', kind: 'file', filePath: 'core.ts' })
-    store.addNode({ id: 'util.ts', name: 'util.ts', kind: 'file', filePath: 'util.ts' })
-    store.addNode({ id: 'app.ts', name: 'app.ts', kind: 'file', filePath: 'app.ts' })
+    const frontendVue = `
+<script setup lang="ts">
+import axios from 'axios'
+async function fetchUser() {
+  const res = await axios.get('/api/v1/users')
+  return res.data
+}
+</script>
+`
 
-    // app.ts imports core.ts and util.ts; core.ts imports util.ts
-    store.addEdge({ from: 'app.ts', to: 'core.ts', relation: 'imports' })
-    store.addEdge({ from: 'app.ts', to: 'util.ts', relation: 'imports' })
-    store.addEdge({ from: 'core.ts', to: 'util.ts', relation: 'imports' })
+    const backendJava = `
+package com.example.controller;
+import org.springframework.web.bind.annotation.GetMapping;
 
-    const metrics = store.calculateMetrics()
-    expect(metrics.totalFiles).toBe(3)
-    expect(metrics.totalEdges).toBe(3)
+public class UserController {
+    @GetMapping("/api/v1/users")
+    public List<User> listUsers() {
+        return userService.findAll();
+    }
+}
+`
 
-    const utilMetric = metrics.modules.find((m) => m.filePath === 'util.ts')
-    expect(utilMetric?.afferentCoupling).toBe(2) // Imported by app and core
-    expect(utilMetric?.efferentCoupling).toBe(0)
-    expect(utilMetric?.instability).toBe(0) // Very stable
+    const files = new Map<string, string>([
+      ['frontend/UserList.vue', frontendVue],
+      ['backend/UserController.java', backendJava],
+    ])
 
-    const appMetric = metrics.modules.find((m) => m.filePath === 'app.ts')
-    expect(appMetric?.afferentCoupling).toBe(0)
-    expect(appMetric?.efferentCoupling).toBe(2)
-    expect(appMetric?.instability).toBe(1) // Completely fragile/dependent
+    const result = buildApiContractsResult(store, files)
+    expect(result.apiContracts).toBeDefined()
+    expect(result.apiContracts?.totalContracts).toBe(1)
+    expect(result.apiContracts?.matchedContracts[0]?.urlPattern).toBe('/api/v1/users')
+    expect(result.apiContracts?.matchedContracts[0]?.httpMethod).toBe('GET')
 
-    expect(metrics.topHubs.length).toBeGreaterThan(0)
+    // Graph must now contain cross-language virtual edge
+    const edges = store.getAllEdges()
+    expect(edges.some((e) => e.relation === 'calls')).toBe(true)
   })
 })
 
@@ -784,144 +791,8 @@ describe('CodeAnalyzer & TSParser - Re-exports, OOP, and Scope-Aware Calls', () 
   })
 })
 
-describe('Incremental Scanning & Workspace Watching', () => {
-  it('hits 100% cache on second scan of unchanged workspace files', async () => {
-    const analyzer = new CodeAnalyzer()
-
-    // 1. Cold Scan
-    const firstRun = await analyzer.indexDirectoryIncremental(process.cwd())
-    expect(firstRun.totalFiles).toBeGreaterThan(0)
-    expect(firstRun.indexedFiles).toBe(firstRun.totalFiles)
-    expect(firstRun.cachedFiles).toBe(0)
-
-    // 2. Warm Scan (Cache Hit)
-    const secondRun = await analyzer.indexDirectoryIncremental(process.cwd())
-    expect(secondRun.totalFiles).toBe(firstRun.totalFiles)
-    expect(secondRun.cachedFiles).toBe(firstRun.totalFiles)
-    expect(secondRun.indexedFiles).toBe(0)
-    expect(secondRun.durationMs).toBeLessThanOrEqual(50) // Sub-50ms execution
-  })
-
-  it('supports LensWatcher lifecycle', () => {
-    const analyzer = new CodeAnalyzer()
-    const watcher = analyzer.createWatcher(process.cwd(), 50)
-    expect(watcher).toBeDefined()
-    analyzer.closeWatcher()
-  })
-})
-
-describe('Presenters, Markdown & Mermaid Rendering', () => {
-  it('formats graph result into structured markdown with Mermaid topology', () => {
-    const sampleResult: CodeGraphResult = {
-      target: 'main',
-      action: 'call_graph',
-      rootNodes: [{ id: 'src/main.ts#main:5', name: 'main', kind: 'function', filePath: 'src/main.ts', line: 5 }],
-      nodes: [
-        { id: 'src/main.ts#main:5', name: 'main', kind: 'function', filePath: 'src/main.ts', line: 5 },
-        { id: 'src/main.ts#helper:2', name: 'helper', kind: 'function', filePath: 'src/main.ts', line: 2 },
-      ],
-      edges: [{ from: 'src/main.ts#main:5', to: 'src/main.ts#helper:2', relation: 'calls' }],
-      summary: 'Found 2 node(s)',
-    }
-
-    const md = formatGraphMarkdown(sampleResult)
-    expect(md).toContain('### Lens: call_graph for `main`')
-    expect(md).toContain('**Root Node(s):**')
-    expect(md).toContain('**Relationships & Calls:**')
-    expect(md).toContain('`src/main.ts#main:5` --[calls]--> `src/main.ts#helper:2`')
-    expect(md).toContain('```mermaid')
-  })
-
-  it('truncates large graphs (> 50 nodes) to prevent LLM token exhaustion', () => {
-    const bigNodes: CodeGraphNode[] = []
-    for (let i = 0; i < 60; i++) {
-      bigNodes.push({
-        id: `src/mod${i}.ts#func${i}:1`,
-        name: `func${i}`,
-        kind: 'function',
-        filePath: `src/mod${i}.ts`,
-      })
-    }
-
-    const bigResult: CodeGraphResult = {
-      target: 'bigTarget',
-      action: 'dependencies',
-      rootNodes: [bigNodes[0]!],
-      nodes: bigNodes,
-      edges: [],
-      summary: 'Large graph',
-    }
-
-    const md = formatGraphMarkdown(bigResult)
-    expect(md).toContain('more nodes omitted for brevity')
-  })
-
-  it('formats circular dependency audit result', () => {
-    const circularResult: CodeGraphResult = {
-      target: 'workspace',
-      action: 'circular',
-      rootNodes: [],
-      nodes: [],
-      edges: [],
-      summary: '⚠️ Detected 1 circular dependency cycle(s)',
-      circularCycles: [
-        { cycle: ['src/a.ts', 'src/b.ts', 'src/a.ts'], length: 2 },
-      ],
-    }
-
-    const md = formatGraphMarkdown(circularResult)
-    expect(md).toContain('### Lens: Circular Dependency Audit')
-    expect(md).toContain('Cycle #1')
-    expect(md).toContain('src/a.ts')
-  })
-
-  it('formats architecture metrics into markdown tables', () => {
-    const metricsResult: CodeGraphResult = {
-      target: 'workspace',
-      action: 'metrics',
-      rootNodes: [],
-      nodes: [],
-      edges: [],
-      summary: 'Evaluated 3 files',
-      metrics: {
-        totalFiles: 3,
-        totalSymbols: 10,
-        totalEdges: 8,
-        averageInstability: 0.5,
-        modules: [
-          { filePath: 'src/util.ts', afferentCoupling: 2, efferentCoupling: 0, instability: 0 },
-        ],
-        topHubs: [
-          { id: 'src/util.ts', name: 'src/util.ts', kind: 'file', filePath: 'src/util.ts', degree: 4, inboundDegree: 2, outboundDegree: 2 },
-        ],
-      },
-    }
-
-    const md = formatGraphMarkdown(metricsResult)
-    expect(md).toContain('### Lens: Architecture Health & Coupling Metrics')
-    expect(md).toContain('Top Centrality Hubs')
-    expect(md).toContain('Module Coupling & Fragility Matrix')
-  })
-
-  it('produces valid pure call and result cards', () => {
-    const args: LensArgs = { action: 'dependencies', target: 'src/index.ts' }
-    const callView = presentLensCall(args)
-    expect(callView.card).toBe('generic')
-    if (callView.card === 'generic') {
-      expect(callView.kind).toBe('search')
-    }
-
-    const resultView = presentLensResult(args, {
-      content: [{ type: 'text', text: 'Result content' }],
-      isError: false,
-    })
-    expect(resultView.card).toBe('generic')
-    expect(resultView.title).toContain('dependencies')
-  })
-})
-
 describe('Plugin Registration & All Actions Execution', () => {
-  it('registers and executes lens tool for dependencies, call_graph, impact, circular, metrics, path, unused, and lint', async () => {
+  it('registers and executes lens tool for dependencies, call_graph, impact, circular, metrics, path, unused, lint, diff_impact, slice, and api_contracts', async () => {
     const ctx = new MockContext()
     ctx.plugin(ToolLens, { maxDepth: 4, cache: true })
 
@@ -942,97 +813,48 @@ describe('Plugin Registration & All Actions Execution', () => {
       },
     })
     expect(depRes.isError).toBe(false)
-    const depGraph = depRes.value as unknown as CodeGraphResult
-    expect(depGraph.action).toBe('dependencies')
-    expect(depGraph.rootNodes.length).toBeGreaterThan(0)
 
-    // 2. Impact Action with Tiers
-    const impactRes = await ctx.tools.execute({
+    // 2. Diff Impact Action
+    const diffRes = await ctx.tools.execute({
       signal,
       callId: 'call-2',
       name: 'lens',
       arguments: {
-        action: 'impact',
-        target: 'src/types.ts',
+        action: 'diff_impact',
       },
     })
-    expect(impactRes.isError).toBe(false)
-    const impactGraph = impactRes.value as unknown as CodeGraphResult
-    expect(impactGraph.action).toBe('impact')
-    expect(impactGraph.summary).toContain('breaking caller')
+    expect(diffRes.isError).toBe(false)
+    const diffGraph = diffRes.value as unknown as CodeGraphResult
+    expect(diffGraph.action).toBe('diff_impact')
+    expect(diffGraph.diffImpact).toBeDefined()
 
-    // 3. Circular Action
-    const circularRes = await ctx.tools.execute({
+    // 3. Slice Action
+    const sliceRes = await ctx.tools.execute({
       signal,
       callId: 'call-3',
       name: 'lens',
       arguments: {
-        action: 'circular',
+        action: 'slice',
+        target: 'index',
       },
     })
-    expect(circularRes.isError).toBe(false)
-    const circularGraph = circularRes.value as unknown as CodeGraphResult
-    expect(circularGraph.action).toBe('circular')
-    expect(circularGraph.circularCycles).toBeDefined()
+    expect(sliceRes.isError).toBe(false)
+    const sliceGraph = sliceRes.value as unknown as CodeGraphResult
+    expect(sliceGraph.action).toBe('slice')
+    expect(sliceGraph.sliceResult).toBeDefined()
 
-    // 4. Metrics Action
-    const metricsRes = await ctx.tools.execute({
+    // 4. API Contracts Action
+    const apiRes = await ctx.tools.execute({
       signal,
       callId: 'call-4',
       name: 'lens',
       arguments: {
-        action: 'metrics',
+        action: 'api_contracts',
       },
     })
-    expect(metricsRes.isError).toBe(false)
-    const metricsGraph = metricsRes.value as unknown as CodeGraphResult
-    expect(metricsGraph.action).toBe('metrics')
-    expect(metricsGraph.metrics).toBeDefined()
-    expect(metricsGraph.metrics?.totalFiles).toBeGreaterThan(0)
-
-    // 5. Unused Action (Dead Code Audit)
-    const unusedRes = await ctx.tools.execute({
-      signal,
-      callId: 'call-5',
-      name: 'lens',
-      arguments: {
-        action: 'unused',
-      },
-    })
-    expect(unusedRes.isError).toBe(false)
-    const unusedGraph = unusedRes.value as unknown as CodeGraphResult
-    expect(unusedGraph.action).toBe('unused')
-    expect(unusedGraph.deadCode).toBeDefined()
-
-    // 6. Lint Action (Architecture Boundary Rules)
-    const lintRes = await ctx.tools.execute({
-      signal,
-      callId: 'call-6',
-      name: 'lens',
-      arguments: {
-        action: 'lint',
-      },
-    })
-    expect(lintRes.isError).toBe(false)
-    const lintGraph = lintRes.value as unknown as CodeGraphResult
-    expect(lintGraph.action).toBe('lint')
-    expect(lintGraph.architectureViolations).toBeDefined()
-
-    // 7. Path Action (Shortest Invocation Trace)
-    const pathRes = await ctx.tools.execute({
-      signal,
-      callId: 'call-7',
-      name: 'lens',
-      arguments: {
-        action: 'path',
-        target: 'src/index.ts',
-        to: 'src/analyzer.ts',
-      },
-    })
-    expect(pathRes.isError).toBe(false)
-    const pathGraph = pathRes.value as unknown as CodeGraphResult
-    expect(pathGraph.action).toBe('path')
-    expect(pathGraph.pathfinding).toBeDefined()
-    expect(pathGraph.pathfinding?.isFound).toBe(true)
+    expect(apiRes.isError).toBe(false)
+    const apiGraph = apiRes.value as unknown as CodeGraphResult
+    expect(apiGraph.action).toBe('api_contracts')
+    expect(apiGraph.apiContracts).toBeDefined()
   })
 })

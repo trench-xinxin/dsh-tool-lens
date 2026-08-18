@@ -11,6 +11,7 @@ export type CodeNodeKind =
   | 'interface'
   | 'type'
   | 'variable'
+  | 'api_endpoint'
 
 export type CodeEdgeRelation = 'imports' | 'calls' | 'contains' | 'implements' | 'extends'
 
@@ -23,6 +24,9 @@ export type CodeGraphAction =
   | 'path'
   | 'unused'
   | 'lint'
+  | 'diff_impact'
+  | 'slice'
+  | 'api_contracts'
 
 export interface CodeGraphNode {
   /** Unique composite identifier: e.g., `src/index.ts` or `src/index.ts#apply:10` */
@@ -37,6 +41,8 @@ export interface CodeGraphNode {
   line?: number
   /** Ending line number (1-based), if applicable */
   endLine?: number
+  /** Additional metadata (e.g. HTTP method for api endpoints) */
+  metadata?: Record<string, any>
 }
 
 export interface CodeGraphEdge {
@@ -141,6 +147,42 @@ export interface ArchitectureViolation {
   reason: string
 }
 
+/** Git diff change impact analysis */
+export interface GitDiffImpactResult {
+  changedFiles: string[]
+  changedSymbols: CodeGraphNode[]
+  affectedUpstreamFiles: string[]
+  affectedTestFiles: string[]
+  breakingCallers: CodeGraphNode[]
+  totalChangedFiles: number
+  totalAffectedFiles: number
+}
+
+/** Architecture domain slice result */
+export interface ArchitectureSliceResult {
+  domainSeed: string
+  cohesionScore: number
+  slicedNodes: CodeGraphNode[]
+  internalEdges: CodeGraphEdge[]
+  boundaryOutgoingEdges: CodeGraphEdge[]
+}
+
+/** Full-stack cross-language API contract match */
+export interface ApiContractMatch {
+  urlPattern: string
+  httpMethod: string
+  clientCallNode: CodeGraphNode
+  serverHandlerNode: CodeGraphNode
+}
+
+/** Full-stack API contracts audit result */
+export interface ApiContractsResult {
+  matchedContracts: ApiContractMatch[]
+  unmatchedClientCalls: CodeGraphNode[]
+  unmatchedServerEndpoints: CodeGraphNode[]
+  totalContracts: number
+}
+
 export interface CodeGraphResult {
   target: string
   action: CodeGraphAction
@@ -154,6 +196,9 @@ export interface CodeGraphResult {
   pathfinding?: PathfindingResult
   deadCode?: DeadCodeResult
   architectureViolations?: ArchitectureViolation[]
+  diffImpact?: GitDiffImpactResult
+  sliceResult?: ArchitectureSliceResult
+  apiContracts?: ApiContractsResult
 }
 
 export interface LensArgs {
@@ -161,6 +206,7 @@ export interface LensArgs {
   target?: string
   to?: string
   rules?: ArchitectureRule[] | string
+  commit?: string
   depth?: number
   direction?: 'inbound' | 'outbound' | 'both'
   scope?: string

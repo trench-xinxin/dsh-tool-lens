@@ -58,12 +58,21 @@ npx @trench-xinxin/dsh-tool-lens "Use lens tool to audit circular dependencies i
    - Bidirectional BFS algorithm traces shortest execution paths and intermediate hops between any two symbols.
 
 6. **🧹 Dead Code & Unused Symbol Audit (`action: unused`)**
-   - Automatically detects entry points, auditing $Ca = 0$ orphan files and unreachable exported functions/classes.
+   - Discovers unreferenced symbols and orphan files with zero afferent callers ($Ca = 0$).
 
-7. **🛡 Architectural Boundary Linting (`action: lint`)**
-   - Enforces layer boundary rules (e.g. `views/**` forbidden to call `infra/**`) to prevent architecture erosion.
+7. **🛡 Architecture Layer Governance (`action: lint`)**
+   - Enforces architectural boundary rules (e.g. `views/**` cannot directly import `infra/**`) to prevent layer decay.
 
-8. **🌍 Polyglot Ecosystem Drivers (`Java / Python / Go / Rust / TS / SFC`)**
+8. **📝 Git Diff Impact & Test Recommender (`action: diff_impact`)**
+   - Scans uncommitted working tree diffs or commit ranges, traces upstream breaking callers, and **recommends targeted regression test suites**.
+
+9. **🧩 Domain Architecture Subgraph Slicing (`action: slice`)**
+   - Extracts compact, high-cohesion domain slices (Ego-Networks) around seed symbols, computing cohesion scores and boundary dependencies.
+
+10. **🌐 Full-Stack Cross-Language API Contracts (`action: api_contracts`)**
+    - Automatically links frontend HTTP requests (`fetch`, `axios`, `request`) to backend route controllers (Java Spring, Python FastAPI, Go Gin), forming full-stack end-to-end call graphs.
+
+11. **🌍 Polyglot Ecosystem Drivers (`Java / Python / Go / Rust / TS / SFC`)**
    - **Java (`.java`)**: `package`, Maven/Gradle paths, `class`, `interface`, `extends`, `implements`, and class method invocations.
    - **Python (`.py`)**: `def`, `class` inheritance, `self.method()`, and relative/absolute package imports.
    - **Go (`.go`)**: `package` scopes, `go.mod` module paths, Struct Embedding, and Receiver methods.

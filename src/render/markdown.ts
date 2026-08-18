@@ -45,7 +45,22 @@ export function formatGraphMarkdown(result: CodeGraphResult): string {
     return formatLintMarkdown(result)
   }
 
-  // 7. Default rendering for dependencies & call_graph
+  // 7. Specialized rendering for Git Diff Impact Action
+  if (result.action === 'diff_impact' && result.diffImpact) {
+    return formatDiffImpactMarkdown(result)
+  }
+
+  // 8. Specialized rendering for Architecture Slicing Action
+  if (result.action === 'slice' && result.sliceResult) {
+    return formatSliceMarkdown(result)
+  }
+
+  // 9. Specialized rendering for Full-Stack API Contracts Action
+  if (result.action === 'api_contracts' && result.apiContracts) {
+    return formatApiContractsMarkdown(result)
+  }
+
+  // 10. Default rendering for dependencies & call_graph
   const lines: string[] = [
     `### Lens: ${result.action} for \`${result.target}\``,
     `*Found ${result.nodes.length} connected node(s) and ${result.edges.length} relationship(s).*`,
@@ -113,6 +128,104 @@ export function formatGraphMarkdown(result: CodeGraphResult): string {
   const mermaid = generateMermaidDiagram(result.nodes, result.edges, 25)
   if (mermaid) {
     lines.push('', '#### Visual Topology', mermaid)
+  }
+
+  return lines.join('\n')
+}
+
+function formatDiffImpactMarkdown(result: CodeGraphResult): string {
+  const d = result.diffImpact!
+  const lines: string[] = [
+    `### Lens: Git Diff Change Impact & Regression Matrix (\`${result.target}\`)`,
+    `> ${result.summary}`,
+    '',
+  ]
+
+  if (d.changedFiles.length > 0) {
+    lines.push(`**Modified Files (${d.changedFiles.length}):**`)
+    for (const f of d.changedFiles) {
+      lines.push(`- 📝 \`${f}\``)
+    }
+    lines.push('')
+  }
+
+  if (d.breakingCallers.length > 0) {
+    lines.push(`**Direct Breaking Upstream Callers (${d.breakingCallers.length}):**`)
+    for (const c of d.breakingCallers) {
+      lines.push(`- 🔴 **[${c.kind}]** \`${c.name}\` (\`${c.filePath}${c.line ? `:${c.line}` : ''}\`)`)
+    }
+    lines.push('')
+  }
+
+  if (d.affectedTestFiles.length > 0) {
+    lines.push(`**🎯 Recommended Regression Test Suite (${d.affectedTestFiles.length}):**`)
+    for (const t of d.affectedTestFiles) {
+      lines.push(`- 🧪 \`${t}\``)
+    }
+    lines.push('')
+  }
+
+  return lines.join('\n')
+}
+
+function formatSliceMarkdown(result: CodeGraphResult): string {
+  const s = result.sliceResult!
+  const lines: string[] = [
+    `### Lens: Architecture Domain Slice for \`${s.domainSeed}\``,
+    `> ${result.summary}`,
+    '',
+    `**Cohesion Score:** **${(s.cohesionScore * 100).toFixed(1)}%** | **Internal Edges:** ${s.internalEdges.length} | **External Dependencies:** ${s.boundaryOutgoingEdges.length}`,
+    '',
+    `**Sliced Domain Symbols / Files (${s.slicedNodes.length}):**`,
+  ]
+
+  for (const n of s.slicedNodes.slice(0, 25)) {
+    lines.push(`- [${n.kind}] \`${n.name}\` (\`${n.filePath}\`)`)
+  }
+  if (s.slicedNodes.length > 25) {
+    lines.push(`- *... and ${s.slicedNodes.length - 25} more domain symbols*`)
+  }
+  lines.push('')
+
+  const mermaid = generateMermaidDiagram(s.slicedNodes, s.internalEdges, 25)
+  if (mermaid) {
+    lines.push('#### Domain Slice Topology', mermaid)
+  }
+
+  return lines.join('\n')
+}
+
+function formatApiContractsMarkdown(result: CodeGraphResult): string {
+  const a = result.apiContracts!
+  const lines: string[] = [
+    '### Lens: Full-Stack End-to-End API Contracts',
+    `> ${result.summary}`,
+    '',
+  ]
+
+  if (a.matchedContracts.length > 0) {
+    lines.push(`**Connected Full-Stack HTTP Contracts (${a.matchedContracts.length}):**`)
+    lines.push('| Method | URL Route | Frontend Client Call | Backend Server Handler |')
+    lines.push('| :--- | :--- | :--- | :--- |')
+    for (const c of a.matchedContracts) {
+      lines.push(
+        `| **${c.httpMethod}** | \`${c.urlPattern}\` | \`${c.clientCallNode.filePath}:${c.clientCallNode.line}\` | \`${c.serverHandlerNode.filePath}:${c.serverHandlerNode.line}\` |`,
+      )
+    }
+    lines.push('')
+  }
+
+  if (a.unmatchedClientCalls.length > 0) {
+    lines.push(`**Unmatched Frontend API Calls (${a.unmatchedClientCalls.length}):**`)
+    for (const c of a.unmatchedClientCalls.slice(0, 10)) {
+      lines.push(`- ⚠️ \`${c.name}\` at \`${c.filePath}:${c.line}\``)
+    }
+    lines.push('')
+  }
+
+  const mermaid = generateMermaidDiagram(result.nodes, result.edges, 25)
+  if (mermaid) {
+    lines.push('#### Full-Stack Contract Topology', mermaid)
   }
 
   return lines.join('\n')
