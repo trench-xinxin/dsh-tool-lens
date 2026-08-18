@@ -4,6 +4,14 @@
 
 ---
 
+## [1.3.1] - 2026-08-18
+
+### 🩹 CLI 启动器修复 (Fixes)
+- 修复 `npx @trench-xinxin/dsh-tool-lens` 执行时报 `command not found` 的问题：在 `package.json` 的 `bin` 字段中补齐了与包名对应的 `"dsh-tool-lens"` 可执行别名映射。
+- 增强 `bin/dsh-lens.js` 跨平台 Shell 调度与异常捕获。
+
+---
+
 ## [1.3.0] - 2026-08-18
 
 ### 🧭 高阶图论与架构治理升级：路径寻路、死代码审计与分层校验 (Phase 6)

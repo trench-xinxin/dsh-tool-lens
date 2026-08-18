@@ -33,9 +33,12 @@ try {
 const args = process.argv.slice(2)
 const dshArgs = args.length === 0 ? ['web', '--patch', tempPatch] : [...args, '--patch', tempPatch]
 
-const child = spawn('npx', ['-y', '@deepseek-ai/dsh', ...dshArgs], {
+const isWindows = process.platform === 'win32'
+const npxCmd = isWindows ? 'npx.cmd' : 'npx'
+
+const child = spawn(npxCmd, ['-y', '@deepseek-ai/dsh', ...dshArgs], {
   stdio: 'inherit',
-  shell: process.platform === 'win32',
+  shell: true,
 })
 
 const cleanup = () => {
@@ -43,6 +46,12 @@ const cleanup = () => {
     unlinkSync(tempPatch)
   } catch {}
 }
+
+child.on('error', (err) => {
+  cleanup()
+  console.error('[dsh-lens] Failed to start DeepSeek Harness:', err.message)
+  process.exit(1)
+})
 
 child.on('exit', (code) => {
   cleanup()
