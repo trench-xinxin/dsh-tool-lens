@@ -4,6 +4,14 @@
 
 ---
 
+## [1.4.0] - 2026-08-18
+
+### 🚀 CLI 启动器参数对齐与端口自适应稳定版 (Release)
+- 适配 DSH CLI `--profile web --patch <tempPatch> --port <freePort>` 参数规范，彻底解决 `error: unknown option '--patch'` 与端口冲突问题；
+- 3080 端口被占用时自动切换至下一个可用端口（如 3081、3082...）并打印提示，零配置一键无缝拉起 Web 界面。
+
+---
+
 ## [1.3.9] - 2026-08-18
 
 ### 🩹 原生 CLI 参数路由端口 (Fixes)

@@ -59,12 +59,12 @@ async function main() {
   }
 
   let dshArgs = []
-  if (args.length === 0) {
-    dshArgs = ['web', '--port', String(targetPort), '--patch', tempPatch]
-  } else if (args[0] === 'web') {
-    dshArgs = hasUserPort ? [...args, '--patch', tempPatch] : ['web', '--port', String(targetPort), ...args.slice(1), '--patch', tempPatch]
+  if (args.length === 0 || args[0] === 'web') {
+    const remaining = args[0] === 'web' ? args.slice(1) : args
+    const portArgs = hasUserPort ? [] : ['--port', String(targetPort)]
+    dshArgs = ['--profile', 'web', '--patch', tempPatch, ...portArgs, ...remaining]
   } else {
-    dshArgs = [...args, '--patch', tempPatch]
+    dshArgs = ['--patch', tempPatch, ...args]
   }
 
   const isWindows = process.platform === 'win32'
