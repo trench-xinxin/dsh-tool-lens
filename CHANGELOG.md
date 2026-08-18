@@ -4,6 +4,14 @@
 
 ---
 
+## [2.0.5] - 2026-08-18
+
+### 🛒 DSH Market & Awesome DSH Plugin 市场规范全面适配 (Manifest)
+- 根目录新增 `cordis.patch.yml` 补丁清单；
+- `package.json` 规范化声明 `dsh.bundle` 与 `peerDependencies`，全面支持在 `dsh-market` 插件市场中一键安装与 `dsh plugin add @trench-xinxin/dsh-tool-lens`。
+
+---
+
 ## [2.0.4] - 2026-08-18
 
 ### 🩹 强力拦截大模型误用 Python 语法导致语法错误 (Fixes)
